@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -55,7 +56,7 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, ui3/fonts/OFL.txt), loaded from the plugin folder only.
+  // Bitcount Prop Single (OFL, ui4/fonts/OFL.txt), loaded from the plugin folder only.
   FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
@@ -65,14 +66,7 @@ Panel {
     const k = Math.max(0, Math.min(n, Math.round(p * n / 100)))
     return "|".repeat(k) + ".".repeat(n - k)
   }
-  readonly property string label: {
-    if (benchState === "missing") return "[OMABENCH3D] N/A"
-    if (benchState === "error") return "[OMABENCH3D] ERR"
-    if (benchState === "running" && progress && progress.totalS > 0) return "> RUN " + pixelBar(pct, 5) + " " + pct + "%"
-    if (running) return "> BOOT_"
-    if (lastAborted) return "[OMABENCH3D] ABORTED"
-    return lastScore !== null ? "[OMABENCH3D] " + lastScore : "[OMABENCH3D] _"
-  }
+
 
   // ---- Settings persistence ------------------------------------------
   function save(patch) {
@@ -169,17 +163,70 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  // Bar status: idle (no badge) | run (pulsing play) | done (check) | abort (x) | fail (warning)
+  readonly property string status: (benchState === "missing" || benchState === "error") ? "fail"
+    : running ? "run" : lastAborted ? "abort" : lastScore !== null ? "done" : "idle"
+  readonly property color barFg: root.bar ? root.bar.barForeground : Commons.Color.foreground
+  readonly property color statusColor: status === "run" ? Commons.Color.accent
+    : status === "fail" ? Commons.Color.urgent : status === "abort" ? Commons.Color.muted : root.barFg
+  readonly property string tip: {
+    if (benchState === "missing") return "omabench3d · app not installed\nClick: panel → INSTALL APP"
+    if (benchState === "error") return "omabench3d · error (see last-run.log)"
+    let s = "omabench3d"
+    if (status === "run") s += " · running" + (pct > 0 ? " " + pct + "%" : " (booting)")
+    else if (status === "abort") s += " · last run aborted"
+    else if (status === "done") s += " · last score " + lastScore
+    else s += " · idle"
+    return s + "\nClick: panel · Middle: " + (running ? "abort" : "run") + " · Right: results"
+  }
+
   WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: (root.bar && root.bar.vertical) ? (root.running ? "|" : "#") : root.label
-    fontFamily: root.mono
-    foreground: root.running ? Commons.Color.accent : (root.bar ? root.bar.barForeground : Commons.Color.foreground)
-    tooltipText: root.opened ? "" : (root.benchState === "missing"
-      ? "OMABENCH3D :: NOT INSTALLED AT " + root.appPath
-      : "> OMABENCH3D" + (root.lastScore !== null ? " · last GPU " + root.lastScore : "")
-        + "\nClick: panel · Middle: " + (root.running ? "abort" : "run") + " · Right: results")
+    text: ""
+    labelVisible: false
+    hasVisualContent: true
+    fixedWidth: (root.bar && root.bar.vertical) ? -1 : Style.bar.iconSlot + (root.status === "idle" ? 0 : Math.round(Style.bar.iconSlot * 0.45))
+    fixedHeight: (root.bar && root.bar.vertical) ? Style.bar.iconSlot + (root.status === "idle" ? 0 : Math.round(Style.bar.iconSlot * 0.45)) : -1
+    tooltipText: root.opened ? "" : root.tip
+
+    Item {
+      id: glyphs
+      anchors.centerIn: parent
+      readonly property int s: Math.round(Style.font.icon * 1.05)
+      readonly property int b: Math.round(s * 0.55)
+      readonly property bool v: root.bar && root.bar.vertical
+      property real pulse: 1
+      SequentialAnimation on pulse {
+        running: root.status === "run"; loops: Animation.Infinite
+        NumberAnimation { from: 1; to: 0.3; duration: 650; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 0.3; to: 1; duration: 650; easing.type: Easing.InOutSine }
+      }
+      width: v ? s : s + (badge.visible ? b + 3 : 0)
+      height: v ? s + (badge.visible ? b + 3 : 0) : s
+      Image {
+        id: mainIcon; visible: false; layer.enabled: true
+        width: glyphs.s; height: glyphs.s
+        source: Qt.resolvedUrl("icons/omabench3d.svg")
+        sourceSize: Qt.size(Math.round(width * Screen.devicePixelRatio), Math.round(height * Screen.devicePixelRatio))
+      }
+      MultiEffect { anchors.fill: mainIcon; source: mainIcon; colorization: 1.0; colorizationColor: root.barFg; opacity: root.status === "idle" ? 0.75 : 1 }
+      Image {
+        id: badge; visible: false; layer.enabled: true
+        property bool shown: root.status !== "idle"
+        width: glyphs.b; height: glyphs.b
+        x: glyphs.v ? (glyphs.s - glyphs.b) / 2 : glyphs.s + 3
+        y: glyphs.v ? glyphs.s + 3 : (glyphs.s - glyphs.b) / 2
+        source: shown ? Qt.resolvedUrl("icons/" + root.status + ".svg") : ""
+        sourceSize: Qt.size(Math.round(width * Screen.devicePixelRatio), Math.round(height * Screen.devicePixelRatio))
+      }
+      MultiEffect {
+        anchors.fill: badge; source: badge; visible: badge.shown
+        colorization: 1.0; colorizationColor: root.statusColor
+        opacity: root.status === "run" ? glyphs.pulse : 1
+      }
+    }
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.LeftButton) root.toggle()
       else if (mouseButton === Qt.MiddleButton) root.toggleRun()
