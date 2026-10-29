@@ -35,12 +35,20 @@ BarWidget {
   property double startRequestedAt: 0
 
   readonly property bool running: benchState === "running" || benchState === "starting"
+  // Terminal-style label: "[OMABENCH] 27515" idle, "> RUN ▮▮▮▯▯ 42%" while running.
+  function pixelBar(pct) {
+    const n = Math.max(0, Math.min(5, Math.round(pct / 20)))
+    return "▮".repeat(n) + "▯".repeat(5 - n)
+  }
   readonly property string label: {
-    if (benchState === "missing") return "󰓅 n/a"
-    if (benchState === "running" && progress && progress.totalS > 0)
-      return "󰓅 " + Math.round(100 * progress.elapsedS / progress.totalS) + "%"
-    if (running) return "󰓅 …"
-    return lastScore !== null ? "󰓅 " + lastScore : "󰓅"
+    if (benchState === "missing") return "[OMABENCH] N/A"
+    if (benchState === "error") return "[OMABENCH] ERR"
+    if (benchState === "running" && progress && progress.totalS > 0) {
+      const pct = Math.max(0, Math.min(100, Math.round(100 * progress.elapsedS / progress.totalS)))
+      return "> RUN " + pixelBar(pct) + " " + pct + "%"
+    }
+    if (running) return "> BOOT_"
+    return lastScore !== null ? "[OMABENCH] " + lastScore : "[OMABENCH] _"
   }
 
   function refresh() { if (!statusProc.running) statusProc.running = true }
@@ -66,11 +74,13 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.vertical ? "󰓅" : root.label
+    text: root.vertical ? (root.running ? "▮" : "▣") : root.label
+    // Phosphor accent while a run is live; bar foreground otherwise (theme tokens, no literals).
+    foreground: root.running ? Commons.Color.accent : (root.bar ? root.bar.barForeground : Commons.Color.foreground)
     tooltipText: {
-      if (root.benchState === "missing") return "OmaBench not installed at " + root.appPath
+      if (root.benchState === "missing") return "OMABENCH :: NOT INSTALLED AT " + root.appPath
       if (root.running) return "OmaBench running" + (root.progress ? " (pass " + root.progress.pass + "/" + root.progress.passes + ")" : "") + " — click to stop"
-      return "Run OmaBench" + (root.lastScore !== null ? " · last GPU score " + root.lastScore : "") + "\nRight-click: open results"
+      return "> RUN OMABENCH" + (root.lastScore !== null ? " · last GPU score " + root.lastScore : "") + "\nRight-click: open results"
     }
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.LeftButton) root.toggle()

@@ -3,6 +3,24 @@
   "EngineAssociation": "5.8",
   "Category": "",
   "Description": "OmaBench GPU benchmark",
-  "Modules": [{ "Name": "OmaBench", "Type": "Runtime", "LoadingPhase": "Default" }],
-  "TargetPlatforms": ["Linux"]
+  "Modules": [
+    {
+      "Name": "OmaBench",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "TargetPlatforms": [
+    "Linux"
+  ],
+  "Plugins": [
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true
+    },
+    {
+      "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    }
+  ]
 }
