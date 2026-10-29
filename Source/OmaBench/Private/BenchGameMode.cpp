@@ -92,7 +92,7 @@ void ABenchGameMode::BuildScene()
 	FActorSpawnParameters P; P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	AActor* City = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, P);
-	USceneComponent* Root = NewObject<USceneComponent>(City, TEXT("Root")); City->SetRootComponent(Root); Root->RegisterComponent();
+	USceneComponent* Root = NewObject<USceneComponent>(City, TEXT("Root")); Root->SetMobility(EComponentMobility::Static); City->SetRootComponent(Root); Root->RegisterComponent();
 	auto MakeHISM = [&](UStaticMesh* Mesh, FLinearColor Color, const TCHAR* Name)
 	{
 		UHierarchicalInstancedStaticMeshComponent* H = NewObject<UHierarchicalInstancedStaticMeshComponent>(City, Name);
