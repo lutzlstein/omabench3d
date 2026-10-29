@@ -2,6 +2,7 @@
 // helipad and lifts off again while traffic threads the towers; glass curtain-wall neighbours mirror
 // the neon. All meshes come from art/blender (procedural, open source); placement is fixed-seed.
 #include "BenchGameMode.h"
+#include "BenchCommon.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SpotLightComponent.h"
@@ -14,26 +15,6 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogOmaSky, Log, All);
 
-namespace
-{
-	UStaticMesh* LoadMesh(const TCHAR* Name)
-	{
-		UStaticMesh* M = LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/OmaBench/Meshes/%s.%s"), Name, Name));
-		if (!M) UE_LOG(LogOmaSky, Error, TEXT("Missing mesh %s (run art/build.sh)"), Name);
-		return M;
-	}
-	void BindSlots(UStaticMeshComponent* C, const TMap<FName, UMaterialInterface*>& Slots)
-	{
-		const UStaticMesh* M = C->GetStaticMesh(); if (!M) return;
-		const TArray<FStaticMaterial>& SM = M->GetStaticMaterials();
-		for (int32 i = 0; i < SM.Num(); ++i)
-		{
-			FString N = SM[i].MaterialSlotName.ToString(); int32 Dot; if (N.FindChar(TEXT('.'), Dot)) N.LeftInline(Dot);
-			if (UMaterialInterface* const* Mat = Slots.Find(FName(*N))) C->SetMaterial(i, *Mat);
-		}
-	}
-	double Smooth(double x) { x = FMath::Clamp(x, 0.0, 1.0); return x * x * (3 - 2 * x); }
-}
 
 void ABenchGameMode::BuildSkyline()
 {
@@ -75,7 +56,7 @@ void ABenchGameMode::BuildSkyline()
 		C->SetStaticMesh(Mesh); C->SetMobility(bMovable ? EComponentMobility::Movable : EComponentMobility::Static); C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		C->SetRelativeTransform(FTransform(FRotator(0, Yaw, 0), Loc, FVector(Scale)));
 		if (USceneComponent* RC = Owner->GetRootComponent()) C->SetupAttachment(RC);
-		BindSlots(C, Slots); C->RegisterComponent(); return C; };
+		OmaBench::BindSlots(C, Slots); C->RegisterComponent(); return C; };
 	auto Box = [&](UMaterialInterface* M, const FVector& Loc, const FVector& Size) { TMap<FName, UMaterialInterface*> S; UStaticMeshComponent* C = Place(Site, CubeMesh, Loc, 0, S, 1.f); C->SetRelativeScale3D(Size / 100.f); C->SetMaterial(0, M); return C; };
 	auto Light = [&](auto* L, const FVector& Loc, const FRotator& Rot, FLinearColor Col, float I, float R, bool bShadow) {
 		L->SetupAttachment(Root); L->SetMobility(EComponentMobility::Movable); L->RegisterComponent(); L->SetWorldLocationAndRotation(Loc, Rot);
@@ -95,21 +76,21 @@ void ABenchGameMode::BuildSkyline()
 		for (int32 i = 0; i < 7; ++i) Box(ChromeV(FLinearColor(0.02f, 0.02f, 0.025f), 0.01f, 0.f), FVector(RoofCentre.X + Rng.FRandRange(-1100, 1100), RoofCentre.Y + Rng.FRandRange(-2000, 2000), RoofTop + 1), FVector(Rng.FRandRange(200, 600), Rng.FRandRange(150, 500), 2));
 	}
 	// Railings along the parapet (4 m segments).
-	if (UStaticMesh* Rail = LoadMesh(TEXT("SM_Railing")))
+	if (UStaticMesh* Rail = OmaBench::LoadMesh(TEXT("SM_Railing")))
 	{
 		for (float y = -Half.Y + 200; y < Half.Y; y += 400) for (int32 s = -1; s <= 1; s += 2) Place(Site, Rail, FVector(RoofCentre.X + s * (Half.X - 10), RoofCentre.Y + y, RoofTop + 40), 90, Common);
 		for (float x = -Half.X + 200; x < Half.X; x += 400) for (int32 s = -1; s <= 1; s += 2) Place(Site, Rail, FVector(RoofCentre.X + x, RoofCentre.Y + s * (Half.Y - 10), RoofTop + 40), 0, Common);
 	}
 	const FVector Pad = FVector(RoofCentre.X + 300, RoofCentre.Y + 900, RoofTop);
-	Place(Site, LoadMesh(TEXT("SM_Helipad")), Pad, 0, Common);
-	UStaticMesh* Hvac = LoadMesh(TEXT("SM_HVAC"));
+	Place(Site, OmaBench::LoadMesh(TEXT("SM_Helipad")), Pad, 0, Common);
+	UStaticMesh* Hvac = OmaBench::LoadMesh(TEXT("SM_HVAC"));
 	for (const FVector& L : { FVector(-900, -1700, 0), FVector(-900, -1150, 0), FVector(-300, -1700, 0), FVector(300, -1700, 0) }) Place(Site, Hvac, RoofCentre + L + FVector(0, 0, RoofTop), 0, Common);
-	Place(Site, LoadMesh(TEXT("SM_WaterTank")), RoofCentre + FVector(950, -1500, RoofTop), 20, Common);
-	Place(Site, LoadMesh(TEXT("SM_Antenna")), RoofCentre + FVector(-1150, 2150, RoofTop), 0, Common);
-	Place(Site, LoadMesh(TEXT("SM_Antenna")), RoofCentre + FVector(1150, -2200, RoofTop), 45, Common, 1.3f);
+	Place(Site, OmaBench::LoadMesh(TEXT("SM_WaterTank")), RoofCentre + FVector(950, -1500, RoofTop), 20, Common);
+	Place(Site, OmaBench::LoadMesh(TEXT("SM_Antenna")), RoofCentre + FVector(-1150, 2150, RoofTop), 0, Common);
+	Place(Site, OmaBench::LoadMesh(TEXT("SM_Antenna")), RoofCentre + FVector(1150, -2200, RoofTop), 45, Common, 1.3f);
 	// Signs: rune glyphs only (invented, no words). Vertical blades hang off the avenue facade (-X), one standing sign + billboard on the roof.
 	auto SignSlots = [&](FLinearColor C) { TMap<FName, UMaterialInterface*> S = Common; S.Add(TEXT("EmitGlyph"), Emit(C, 24)); return S; };
-	UStaticMesh* SignV[2] = { LoadMesh(TEXT("SM_SignV1")), LoadMesh(TEXT("SM_SignV2")) };
+	UStaticMesh* SignV[2] = { OmaBench::LoadMesh(TEXT("SM_SignV1")), OmaBench::LoadMesh(TEXT("SM_SignV2")) };
 	const float Fx = RoofCentre.X - Half.X - 30;
 	for (int32 i = 0; i < 4; ++i)
 	{
@@ -118,8 +99,8 @@ void ABenchGameMode::BuildSkyline()
 		Place(Site, SignV[i % 2], L, -90, SignSlots(C), 1.4f);
 		Light(NewObject<UPointLightComponent>(Site, *FString::Printf(TEXT("SignL%d"), i)), L + FVector(-300, 0, 500), FRotator::ZeroRotator, C, 130000, 3200, false);
 	}
-	Place(Site, LoadMesh(TEXT("SM_SignH1")), RoofCentre + FVector(-1250, -600, RoofTop + 220), -90, SignSlots(Mag), 1.1f);
-	Place(Site, LoadMesh(TEXT("SM_Billboard")), RoofCentre + FVector(1150, 1500, RoofTop), -90, Common, 1.2f);
+	Place(Site, OmaBench::LoadMesh(TEXT("SM_SignH1")), RoofCentre + FVector(-1250, -600, RoofTop + 220), -90, SignSlots(Mag), 1.1f);
+	Place(Site, OmaBench::LoadMesh(TEXT("SM_Billboard")), RoofCentre + FVector(1150, 1500, RoofTop), -90, Common, 1.2f);
 	Light(NewObject<URectLightComponent>(Site, TEXT("BillboardL")), RoofCentre + FVector(900, 1500, RoofTop + 720), FRotator(0, 180, 0), Mag, 30000, 3000, true);
 	// Pad floodlights (RT shadows) + a cool rim from the city glow.
 	for (int32 k = 0; k < 4; ++k)
@@ -160,7 +141,7 @@ void ABenchGameMode::BuildSkyline()
 	UE_LOG(LogOmaSky, Log, TEXT("T2 skyline: roof at %.0f (block top %.0f), %d components"), RoofTop, BlockTop(2, 4, 1, 5), NC);
 
 	// Hero police spinner: own flashing light-bar materials + matching point lights + belly searchlight.
-	UStaticMesh* SpinnerM = LoadMesh(TEXT("SM_Spinner"));
+	UStaticMesh* SpinnerM = OmaBench::LoadMesh(TEXT("SM_Spinner"));
 	Hero = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, P);
 	{
 		USceneComponent* HR = NewObject<USceneComponent>(Hero, TEXT("HeroRoot")); HR->SetMobility(EComponentMobility::Movable); Hero->SetRootComponent(HR); HR->RegisterComponent();
@@ -178,7 +159,7 @@ void ABenchGameMode::BuildSkyline()
 		Search->SetOuterConeAngle(14); Search->SetInnerConeAngle(6); Search->SetLightColor(Warm); Search->SetCastShadows(true); Search->RegisterComponent();
 	}
 	// Traffic between the towers: civilian cars + a few patrol spinners on fixed lanes.
-	UStaticMesh* Fleet[3] = { LoadMesh(TEXT("SM_CarA")), LoadMesh(TEXT("SM_CarB")), SpinnerM };
+	UStaticMesh* Fleet[3] = { OmaBench::LoadMesh(TEXT("SM_CarA")), OmaBench::LoadMesh(TEXT("SM_CarB")), SpinnerM };
 	const FLinearColor Liv[] = { {0.5f,0.52f,0.55f}, {0.35f,0.05f,0.04f}, {0.04f,0.04f,0.05f}, {0.6f,0.45f,0.15f}, {0.08f,0.18f,0.25f}, {0.8f,0.8f,0.82f} };
 	for (int32 i = 0; i < 30; ++i)
 	{
@@ -208,11 +189,11 @@ void ABenchGameMode::UpdateSkyline(double T)
 	// Hero path.
 	FVector HP; float HYaw = 0, HPitch = 0;
 	const FVector A = Pad + FVector(-14000, -9000, 5000), Hov = Pad + FVector(0, 0, 450), Lift = Pad + FVector(0, 0, 900), Away = Pad + FVector(-16000, 6000, 3500);
-	if (T < 20) { const double s = Smooth(T / 20); HP = FMath::Lerp(A, Hov, s); HYaw = FMath::Lerp((Hov - A).Rotation().Yaw, 0.0, Smooth((T - 8) / 12)); HPitch = -6 * (1 - s); }
-	else if (T < 26) { HP = FMath::Lerp(Hov, Pad, Smooth((T - 20) / 6)); }
+	if (T < 20) { const double s = OmaBench::Smooth(T / 20); HP = FMath::Lerp(A, Hov, s); HYaw = FMath::Lerp((Hov - A).Rotation().Yaw, 0.0, OmaBench::Smooth((T - 8) / 12)); HPitch = -6 * (1 - s); }
+	else if (T < 26) { HP = FMath::Lerp(Hov, Pad, OmaBench::Smooth((T - 20) / 6)); }
 	else if (T < 40) { HP = Pad; }
-	else if (T < 46) { HP = FMath::Lerp(Pad, Lift, Smooth((T - 40) / 6)); }
-	else { const double s = (T - 46) / 14; HP = FMath::Lerp(Lift, Away, s * s); HYaw = FMath::Lerp(0.0, (Away - Lift).Rotation().Yaw, Smooth(s * 2)); HPitch = -8 * Smooth(s * 3); }
+	else if (T < 46) { HP = FMath::Lerp(Pad, Lift, OmaBench::Smooth((T - 40) / 6)); }
+	else { const double s = (T - 46) / 14; HP = FMath::Lerp(Lift, Away, s * s); HYaw = FMath::Lerp(0.0, (Away - Lift).Rotation().Yaw, OmaBench::Smooth(s * 2)); HPitch = -8 * OmaBench::Smooth(s * 3); }
 	if (Hero) Hero->SetActorLocationAndRotation(HP, FRotator(HPitch, HYaw, 0));
 	// Light bar: alternating red/blue strobe (double flash), deterministic in T.
 	const double Ph = FMath::Fmod(T * 2.5, 2.0);
@@ -236,8 +217,8 @@ void ABenchGameMode::UpdateSkyline(double T)
 	const double u2 = u * u, u3 = u2 * u;
 	const FVector Pos = 0.5 * ((2 * P1) + (-P0 + P2) * u + (2 * P0 - 5 * P1 + 4 * P2 - P3) * u2 + (-P0 + 3 * P1 - 3 * P2 + P3) * u3);
 	const FVector Canyon(0, -14000, RoofTop - 11000);
-	const FVector Early = FMath::Lerp(Pad + FVector(-600, 0, 250), HP + FVector(0, 0, 120), Smooth((T - 4) / 14));
-	const FVector Look = FMath::Lerp(Early, Canyon, Smooth((T - 38) / 14));
+	const FVector Early = FMath::Lerp(Pad + FVector(-600, 0, 250), HP + FVector(0, 0, 120), OmaBench::Smooth((T - 4) / 14));
+	const FVector Look = FMath::Lerp(Early, Canyon, OmaBench::Smooth((T - 38) / 14));
 	FRotator R = (Look - Pos).Rotation(); R.Roll = 3.f * FMath::Sin(T * 0.21);
 	Camera->SetActorLocationAndRotation(Pos, R);
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) if (PC->GetViewTarget() != Camera) PC->SetViewTarget(Camera);

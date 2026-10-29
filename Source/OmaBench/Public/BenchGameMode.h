@@ -20,7 +20,6 @@ public:
 	void AbortRun();
 
 	UPROPERTY() TObjectPtr<UStaticMesh> CubeMesh;
-	UPROPERTY() TObjectPtr<UStaticMesh> SphereMesh;
 	UPROPERTY() TObjectPtr<UMaterialInterface> BaseMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> TowerMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> SignMaterial;
@@ -29,9 +28,7 @@ public:
 	UPROPERTY() TArray<TObjectPtr<AActor>> Cars;
 	UPROPERTY() TObjectPtr<UMaterialInterface> CrtMaterial;
 	UPROPERTY() TObjectPtr<ACameraActor> Camera;
-	UPROPERTY() TObjectPtr<UStaticMesh> CylinderMesh;
 	UPROPERTY() TObjectPtr<UMaterialInterface> ChromeMaterial;
-	UPROPERTY() TObjectPtr<UMaterialInterface> FloorMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> GlassMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> EmitMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> HoloMaterial;
@@ -74,6 +71,7 @@ private:
 	void SetDownpourActive(bool bOn);
 	UPROPERTY() TArray<TObjectPtr<class UNiagaraComponent>> DownpourFx;
 	UPROPERTY() TObjectPtr<AActor> RainHost;
+	UPROPERTY() TObjectPtr<class UExponentialHeightFogComponent> CityFog;
 	struct FDrone { TObjectPtr<AActor> Actor; TObjectPtr<class USpotLightComponent> Search; TObjectPtr<class UPointLightComponent> NavL, NavR; int32 Index; };
 	TArray<FDrone> Drones;   // actors are also held (GC-safe) via T3Actors
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> FailSign;

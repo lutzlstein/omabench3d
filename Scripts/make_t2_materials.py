@@ -32,7 +32,7 @@ def setp(m, k, v):
     try: m.set_editor_property(k, v)
     except Exception as e: unreal.log_warning(f"{m.get_name()} {k}: {e}")
 
-# ---- T2 Off-World Hangar materials ------------------------------------------------------------
+# ---- T2 Skyline materials ------------------------------------------------------------
 # M_Chrome: polished metal for spinner bodies/rails; faint world-space panel seams raise roughness on lines.
 m = fresh("M_Chrome")
 wp = L.create_material_expression(m, unreal.MaterialExpressionWorldPosition, -900, 0)
@@ -42,22 +42,6 @@ L.connect_material_expressions(wp, "", r, "P"); L.connect_material_expressions(p
 L.connect_material_property(r, "", unreal.MaterialProperty.MP_ROUGHNESS)
 L.connect_material_property(vparam(m,"Base",(0.85,0.86,0.9,1),-500,200), "", unreal.MaterialProperty.MP_BASE_COLOR)
 L.connect_material_property(sparam(m,"Metallic",1.0,-500,300), "", unreal.MaterialProperty.MP_METALLIC)
-setp(m, "used_with_instanced_static_meshes", True)
-L.recompile_material(m)
-
-# M_Floor: mirror-polished dark floor with emissive inlay grid (world-space).
-m = fresh("M_Floor")
-wp = L.create_material_expression(m, unreal.MaterialExpressionWorldPosition, -900, 0)
-g = scalar_custom(m, "float2 g = abs(frac(P.xy / 400.0) - 0.5); return step(0.492, max(g.x, g.y));", ["P"], -500, 0)
-L.connect_material_expressions(wp, "", g, "P")
-lc = vparam(m, "LineColor", (0.0, 0.6, 1.0, 1), -900, 200)
-em = custom(m, "return C.rgb * G * 2.0;", ["C","G"], -300, 100)
-L.connect_material_expressions(lc, "", em, "C"); L.connect_material_expressions(g, "", em, "G")
-L.connect_material_property(em, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-rr = scalar_custom(m, "return lerp(0.03, 0.3, G);", ["G"], -300, 250); L.connect_material_expressions(g, "", rr, "G")
-L.connect_material_property(rr, "", unreal.MaterialProperty.MP_ROUGHNESS)
-L.connect_material_property(vparam(m,"Base",(0.02,0.02,0.025,1),-500,350), "", unreal.MaterialProperty.MP_BASE_COLOR)
-L.connect_material_property(sparam(m,"Metallic",0.85,-500,450), "", unreal.MaterialProperty.MP_METALLIC)
 setp(m, "used_with_instanced_static_meshes", True)
 L.recompile_material(m)
 

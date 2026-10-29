@@ -72,22 +72,19 @@ ABenchGameMode::ABenchGameMode()
 	PrimaryActorTick.bTickEvenWhenPaused = true;
 	DefaultPawnClass = nullptr;
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Mat(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Tower(TEXT("/Game/OmaBench/Materials/M_Tower.M_Tower"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Sign(TEXT("/Game/OmaBench/Materials/M_Sign.M_Sign"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Street(TEXT("/Game/OmaBench/Materials/M_Street.M_Street"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Rain(TEXT("/Game/OmaBench/Materials/M_Rain.M_Rain"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Crt(TEXT("/Game/OmaBench/Materials/PP_CRT.PP_CRT"));
-	CubeMesh = Cube.Object; SphereMesh = Sphere.Object; BaseMaterial = Mat.Object;
+	CubeMesh = Cube.Object; BaseMaterial = Mat.Object;
 	TowerMaterial = Tower.Object; SignMaterial = Sign.Object; StreetMaterial = Street.Object; RainMaterial = Rain.Object; CrtMaterial = Crt.Object;
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cyl(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MChrome(TEXT("/Game/OmaBench/Materials/M_Chrome.M_Chrome"));
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MFloor(TEXT("/Game/OmaBench/Materials/M_Floor.M_Floor"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MGlass(TEXT("/Game/OmaBench/Materials/M_Glass.M_Glass"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MEmit(TEXT("/Game/OmaBench/Materials/M_Emit.M_Emit"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MHolo(TEXT("/Game/OmaBench/Materials/M_Holo.M_Holo"));
-	CylinderMesh = Cyl.Object; ChromeMaterial = MChrome.Object; FloorMaterial = MFloor.Object; GlassMaterial = MGlass.Object; EmitMaterial = MEmit.Object; HoloMaterial = MHolo.Object;
+	ChromeMaterial = MChrome.Object; GlassMaterial = MGlass.Object; EmitMaterial = MEmit.Object; HoloMaterial = MHolo.Object;
 	HUDClass = ABenchHUD::StaticClass();
 }
 
@@ -293,7 +290,7 @@ void ABenchGameMode::BuildScene()
 	SkyL->GetLightComponent()->SetMobility(EComponentMobility::Movable); SkyL->GetLightComponent()->bRealTimeCapture = true;
 	SkyL->GetLightComponent()->SetIntensity(0.4f); SkyL->GetLightComponent()->RecaptureSky();
 	AExponentialHeightFog* Fog = W->SpawnActor<AExponentialHeightFog>(AExponentialHeightFog::StaticClass(), FTransform::Identity, P);
-	UExponentialHeightFogComponent* FogC = Fog->GetComponent();
+	UExponentialHeightFogComponent* FogC = Fog->GetComponent(); CityFog = FogC;
 	// Street-bound haze: dense at ground level, falls off fast so the skyline neon still reads.
 	FogC->SetVolumetricFog(true); FogC->SetFogDensity(0.2f); FogC->SetFogHeightFalloff(1.1f);
 	FogC->SetFogInscatteringColor(Accent * 0.12f); FogC->SetVolumetricFogAlbedo(FColor(225, 215, 235)); FogC->SetVolumetricFogExtinctionScale(3.0f);
@@ -514,6 +511,12 @@ void ABenchGameMode::ActivateTest(int32 Index)
 	for (AActor* A : T2Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T2"));
 	for (AActor* A : T3Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T3"));
 	SetDownpourActive(Id == TEXT("T3"));
+	if (CityFog)
+	{
+		const bool b3 = Id == TEXT("T3");   // T3 brings its own smoke/steam; keep the global haze lighter there
+		CityFog->SetFogDensity(b3 ? 0.05f : 0.2f); CityFog->SetVolumetricFogExtinctionScale(b3 ? 0.8f : 3.0f);
+		CityFog->SecondFogData.FogDensity = b3 ? 0.15f : 1.1f; CityFog->MarkRenderStateDirty();
+	}
 	if (RtConfigs.Num() <= Index) RtConfigs.SetNum(Index + 1);
 	RtConfigs[Index] = ApplyRtConfig(Id);
 	PathTime = 0;
@@ -552,7 +555,9 @@ void ABenchGameMode::BeginPlay()
 		FSlateApplication::Get().RegisterInputPreProcessor(EscProc, 0);
 		FSlateApplication::Get().SetAllUserFocusToGameViewport();
 	}
-	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) { PC->SetInputMode(FInputModeGameOnly()); PC->bShowMouseCursor = false; }
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) { PC->SetInputMode(FInputModeGameOnly()); PC->bShowMouseCursor = false; PC->CurrentMouseCursor = EMouseCursor::None; }
+	// Hide the OS pointer over the game window for the whole run (screenshots + no distraction).
+	if (FSlateApplication::IsInitialized()) if (TSharedPtr<ICursor> Cur = FSlateApplication::Get().GetPlatformCursor()) { Cur->SetType(EMouseCursor::None); Cur->Show(false); }
 	UE_LOG(LogOmaBench, Log, TEXT("OmaBench %s run %s: passes=%d warmup=%.0fs duration=%.0fs res=%dx%d fullscreen=%d results=%s"),
 		GAppVersion, *RunId, Passes, WarmupS, DurationS, ResX, ResY, bFullscreen, *ResultsPath);
 }
