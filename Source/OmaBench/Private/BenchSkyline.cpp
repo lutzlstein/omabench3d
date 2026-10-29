@@ -116,7 +116,7 @@ void ABenchGameMode::BuildSkyline()
 		const FLinearColor C = Neon[i % 5];
 		const FVector L(Fx, RoofCentre.Y - 1800 + i * 1200, RoofZ - 1100 - (i % 2) * 1400);
 		Place(Site, SignV[i % 2], L, -90, SignSlots(C), 1.4f);
-		Light(NewObject<UPointLightComponent>(Site, *FString::Printf(TEXT("SignL%d"), i)), L + FVector(-300, 0, 500), FRotator::ZeroRotator, C, 60000, 2200, false);
+		Light(NewObject<UPointLightComponent>(Site, *FString::Printf(TEXT("SignL%d"), i)), L + FVector(-300, 0, 500), FRotator::ZeroRotator, C, 130000, 3200, false);
 	}
 	Place(Site, LoadMesh(TEXT("SM_SignH1")), RoofCentre + FVector(-1250, -600, RoofTop + 220), -90, SignSlots(Mag), 1.1f);
 	Place(Site, LoadMesh(TEXT("SM_Billboard")), RoofCentre + FVector(1150, 1500, RoofTop), -90, Common, 1.2f);
@@ -128,7 +128,21 @@ void ABenchGameMode::BuildSkyline()
 		USpotLightComponent* S = Light(NewObject<USpotLightComponent>(Site, *FString::Printf(TEXT("Flood%d"), k)), Pos, (Pad - Pos).Rotation(), Warm, 90000, 3000, true);
 		S->SetOuterConeAngle(40); S->SetInnerConeAngle(20);
 	}
-	Light(NewObject<UPointLightComponent>(Site, TEXT("RoofFill")), RoofCentre + FVector(0, 0, RoofTop + 1500), FRotator::ZeroRotator, Accent, 40000, 4500, false);
+	Light(NewObject<UPointLightComponent>(Site, TEXT("RoofFill")), RoofCentre + FVector(0, 0, RoofTop + 1500), FRotator::ZeroRotator, Accent, 90000, 6000, false);
+	// Practicals: parapet lamp posts every 8 m (warm, no shadows) + cyan/magenta neon spill washing the roof from the facades.
+	{
+		UMaterialInterface* LampE = Emit(Warm, 40);
+		int32 n = 0;
+		auto Lamp = [&](const FVector& L) { Box(Dark, L + FVector(0, 0, 110), FVector(14, 14, 220)); Box(LampE, L + FVector(0, 0, 230), FVector(40, 40, 18));
+			Light(NewObject<UPointLightComponent>(Site, *FString::Printf(TEXT("Lamp%d"), n++)), L + FVector(0, 0, 210), FRotator::ZeroRotator, Warm, 14000, 1300, false); };
+		for (float y = -Half.Y + 300; y < Half.Y; y += 800) for (int32 s = -1; s <= 1; s += 2) Lamp(FVector(RoofCentre.X + s * (Half.X - 70), RoofCentre.Y + y, RoofTop));
+		for (float x = -Half.X + 500; x < Half.X - 300; x += 800) for (int32 s = -1; s <= 1; s += 2) Lamp(FVector(RoofCentre.X + x, RoofCentre.Y + s * (Half.Y - 70), RoofTop));
+		for (int32 s = -1; s <= 1; s += 2)
+		{
+			URectLightComponent* Sp = Light(NewObject<URectLightComponent>(Site, *FString::Printf(TEXT("Spill%d"), s + 1)), RoofCentre + FVector(-Half.X - 600, s * 1300, RoofTop + 900), FRotator(-25, 0, 0), s < 0 ? Cyan : Mag, 60000, 5000, false);
+			Sp->SetSourceWidth(1200); Sp->SetSourceHeight(500);
+		}
+	}
 
 	// Glass curtain-wall neighbours: mirror slabs over the adjacent blocks (taller across the avenue).
 	struct FBlk { int32 X0, X1, Y0, Y1; float Min; };
@@ -139,7 +153,9 @@ void ABenchGameMode::BuildSkyline()
 		const FVector C((B.X0 + B.X1) * 500.f, (B.Y0 + B.Y1) * 500.f, Hh / 2);
 		const FVector S((B.X1 - B.X0) * 1000.f + 900.f, (B.Y1 - B.Y0) * 1000.f + 900.f, Hh);
 		Box(CurtainWall, C, S);
-		for (int32 f = 0; f < 4; ++f) Box(Emit(Neon[(f + B.X0 + 8) % 5], 6), C + FVector(0, 0, Hh / 2 - 300 - f * 2600), S + FVector(12, 12, -S.Z + 25)); // neon crown bands
+		{ UMaterialInterface* Strip = Emit(FLinearColor(0.9f, 0.85f, 0.7f), 1.6f);
+		  for (float z = 900; z < Hh - 900; z += 1100) Box(Strip, FVector(C.X, C.Y, z), FVector(S.X + 8, S.Y + 8, 18)); }
+		for (int32 f = 0; f < 4; ++f) Box(Emit(Neon[(f + B.X0 + 8) % 5], 9), C + FVector(0, 0, Hh / 2 - 300 - f * 2600), S + FVector(12, 12, -S.Z + 25)); // neon crown bands
 	}
 	UE_LOG(LogOmaSky, Log, TEXT("T2 skyline: roof at %.0f (block top %.0f), %d components"), RoofTop, BlockTop(2, 4, 1, 5), NC);
 
@@ -212,7 +228,7 @@ void ABenchGameMode::UpdateSkyline(double T)
 	// Camera: Catmull-Rom through roof-local keys (x, y, height above roof).
 	if (!Camera) return;
 	static const double Kt[] = { 0, 14, 28, 40, 50, 60 };
-	static const FVector Kp[] = { {1250,-2250,190}, {750,-900,240}, {-350,350,280}, {-1150,1250,360}, {-2100,1450,650}, {-3300,1500,450} };
+	static const FVector Kp[] = { {1350,-2300,330}, {750,-900,240}, {-350,350,280}, {-1150,1250,360}, {-2100,1450,650}, {-3300,1500,450} };
 	int32 k = 0; while (k < 4 && T > Kt[k + 1]) ++k;
 	const double u = (T - Kt[k]) / (Kt[k + 1] - Kt[k]);
 	auto Key = [&](int32 i) { i = FMath::Clamp(i, 0, 5); return FVector(RoofCentre.X, RoofCentre.Y, RoofTop) + Kp[i]; };
@@ -220,7 +236,8 @@ void ABenchGameMode::UpdateSkyline(double T)
 	const double u2 = u * u, u3 = u2 * u;
 	const FVector Pos = 0.5 * ((2 * P1) + (-P0 + P2) * u + (2 * P0 - 5 * P1 + 4 * P2 - P3) * u2 + (-P0 + 3 * P1 - 3 * P2 + P3) * u3);
 	const FVector Canyon(0, -14000, RoofTop - 11000);
-	const FVector Look = FMath::Lerp(HP + FVector(0, 0, 120), Canyon, Smooth((T - 38) / 14));
+	const FVector Early = FMath::Lerp(Pad + FVector(-600, 0, 250), HP + FVector(0, 0, 120), Smooth((T - 4) / 14));
+	const FVector Look = FMath::Lerp(Early, Canyon, Smooth((T - 38) / 14));
 	FRotator R = (Look - Pos).Rotation(); R.Roll = 3.f * FMath::Sin(T * 0.21);
 	Camera->SetActorLocationAndRotation(Pos, R);
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) if (PC->GetViewTarget() != Camera) PC->SetViewTarget(Camera);
