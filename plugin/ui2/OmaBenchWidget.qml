@@ -55,7 +55,7 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, qml/fonts/OFL.txt), loaded from the plugin folder only.
+  // Bitcount Prop Single (OFL, ui2/fonts/OFL.txt), loaded from the plugin folder only.
   FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
