@@ -76,7 +76,7 @@ void ABenchHUD::DrawHUD()
 	const float Flick = 0.86f + 0.08f * FMath::Sin(Now * 53.0) + ((GFrameCounter & 7) == 0 ? -0.12f : 0.f);
 	const float IL = (GFrameCounter & 1) ? 0.f : 1.f;
 	auto L = [&](const FString& S, float x, float y, const FLinearColor& C, float s = 1.f) { Line(S, x, y + IL * 0.5f, A(C, C.A * Flick), Sc * s); };
-	const FString Serial = FString::Printf(TEXT("OMB-%s // NEXUS-%s"), *GM->GetTestId(), *GM->GetRunId().Right(6));
+	const FString Serial = FString::Printf(TEXT("OMB3D-%s // NEXUS-%s"), *GM->GetTestId(), *GM->GetRunId().Right(6));
 
 	// Faint forensic grid + centre crosshair (lines only; ~30 draws).
 	const FLinearColor Grid = A(Te, 0.07f); const FLinearColor Back(0.f, 0.f, 0.f, 0.7f);

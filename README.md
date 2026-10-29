@@ -1,3 +1,9 @@
+# omabench3d
+
+UE5 GPU benchmark (T1 City Night, T2 Skyline, T3 Downpour) plus an Omarchy shell plugin (`plugin/`, id `io.github.lutzlstein.omabench3d`, CLI `plugin/bin/omabench3d-ctl`). Results: `~/.local/share/omabench3d/results`. Repo: https://github.com/lutzlstein/omabench3d
+
+The UE project/module keep the internal name `OmaBench` (packaged launcher `Packaged/Linux/OmaBench.sh`).
+
 
 ## Tests and scoring (v0.4)
 

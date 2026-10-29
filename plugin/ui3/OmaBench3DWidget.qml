@@ -7,16 +7,16 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// OmaBench bar widget + terminal panel.
-//   Left click   : open/close the [OMABENCH] panel (run, config, results)
+// OmaBench3D bar widget + terminal panel.
+//   Left click   : open/close the [OMABENCH3D] panel (run, config, results)
 //   Middle click : quick start / abort with saved settings
 //   Right click  : open the results folder
-// All process and file work goes through bin/omabench-ctl (argv only);
+// All process and file work goes through bin/omabench3d-ctl (argv only);
 // QML just renders the small JSON it returns.
 Panel {
   id: root
-  moduleName: "io.github.lutzlstein.omabench"
-  ipcTarget: "io.github.lutzlstein.omabench"
+  moduleName: "io.github.lutzlstein.omabench3d"
+  ipcTarget: "io.github.lutzlstein.omabench3d"
 
   // ---- Config model (inline shell.json entry) -------------------------
   readonly property string appPath: String(setting("appPath", "~/Projects/omabench/Packaged/Linux/OmaBench.sh"))
@@ -38,7 +38,7 @@ Panel {
     { id: "T3", name: "Downpour", detail: "gpu particles · niagara · smoke", available: true }
   ]
 
-  readonly property string ctl: String(Qt.resolvedUrl("../bin/omabench-ctl")).replace(/^file:\/\//, "")
+  readonly property string ctl: String(Qt.resolvedUrl("../bin/omabench3d-ctl")).replace(/^file:\/\//, "")
 
   // ---- Live state -----------------------------------------------------
   property string benchState: "checking"  // checking|missing|idle|starting|running|error
@@ -66,12 +66,12 @@ Panel {
     return "|".repeat(k) + ".".repeat(n - k)
   }
   readonly property string label: {
-    if (benchState === "missing") return "[OMABENCH] N/A"
-    if (benchState === "error") return "[OMABENCH] ERR"
+    if (benchState === "missing") return "[OMABENCH3D] N/A"
+    if (benchState === "error") return "[OMABENCH3D] ERR"
     if (benchState === "running" && progress && progress.totalS > 0) return "> RUN " + pixelBar(pct, 5) + " " + pct + "%"
     if (running) return "> BOOT_"
-    if (lastAborted) return "[OMABENCH] ABORTED"
-    return lastScore !== null ? "[OMABENCH] " + lastScore : "[OMABENCH] _"
+    if (lastAborted) return "[OMABENCH3D] ABORTED"
+    return lastScore !== null ? "[OMABENCH3D] " + lastScore : "[OMABENCH3D] _"
   }
 
   // ---- Settings persistence ------------------------------------------
@@ -147,7 +147,7 @@ Panel {
     if (!themesProc.running) themesProc.running = true
   }
   function openResults() {
-    Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.local/share/omabench/results"])
+    Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.local/share/omabench3d/results"])
   }
   function toggleRun() {
     if (benchState === "missing") { refresh(); return }
@@ -177,8 +177,8 @@ Panel {
     fontFamily: root.mono
     foreground: root.running ? Commons.Color.accent : (root.bar ? root.bar.barForeground : Commons.Color.foreground)
     tooltipText: root.opened ? "" : (root.benchState === "missing"
-      ? "OMABENCH :: NOT INSTALLED AT " + root.appPath
-      : "> OMABENCH" + (root.lastScore !== null ? " · last GPU " + root.lastScore : "")
+      ? "OMABENCH3D :: NOT INSTALLED AT " + root.appPath
+      : "> OMABENCH3D" + (root.lastScore !== null ? " · last GPU " + root.lastScore : "")
         + "\nClick: panel · Middle: " + (root.running ? "abort" : "run") + " · Right: results")
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.LeftButton) root.toggle()
@@ -226,7 +226,7 @@ Panel {
         // Header
         Item {
           width: parent.width; height: hdr.implicitHeight
-          Mono { id: hdr; text: "[OMABENCH]"; color: root.ac; font.bold: true; font.pixelSize: Style.font.subtitle }
+          Mono { id: hdr; text: "[OMABENCH3D]"; color: root.ac; font.bold: true; font.pixelSize: Style.font.subtitle }
           Mono {
             anchors.right: parent.right; anchors.verticalCenter: hdr.verticalCenter
             color: root.running ? root.ac : root.dim

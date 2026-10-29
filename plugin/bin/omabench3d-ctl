@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# omabench-ctl: narrow launcher/status helper for the OmaBench shell plugin.
+# omabench3d-ctl: narrow launcher/status helper for the OmaBench3D shell plugin.
 # Runs outside the shell process; the QML only ever calls this with argv.
-#   omabench-ctl status <appPath>
-#   omabench-ctl start  <appPath> <tests> <WxH|native> <passes> <fullscreen 0|1> <quick 0|1> [warmupS durationS [monitor|auto]]
+#   omabench3d-ctl status <appPath>
+#   omabench3d-ctl start  <appPath> <tests> <WxH|native> <passes> <fullscreen 0|1> <quick 0|1> [warmupS durationS [monitor|auto]]
 #        [... monitor pixel(auto|0|2|4|8) hud(1|0) theme(omarchy|preset)]
-#   omabench-ctl summary     -> last result + newest 8 history entries (JSON)
-#   omabench-ctl monitors    -> Hyprland outputs with refresh rates (JSON)
-#   omabench-ctl stop
+#   omabench3d-ctl summary     -> last result + newest 8 history entries (JSON)
+#   omabench3d-ctl monitors    -> Hyprland outputs with refresh rates (JSON)
+#   omabench3d-ctl stop
 set -uo pipefail
 
-data="${XDG_DATA_HOME:-$HOME/.local/share}/omabench"
+data="${XDG_DATA_HOME:-$HOME/.local/share}/omabench3d"
 results="$data/results"
-rundir="${XDG_RUNTIME_DIR:-$data}/omabench"
+rundir="${XDG_RUNTIME_DIR:-$data}/omabench3d"
 pidfile="$rundir/run.pid"
 logfile="$data/last-run.log"
 
@@ -150,5 +150,5 @@ case "$cmd" in
     kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null
     rm -f "$pidfile"; echo stopped
     ;;
-  *) echo "usage: omabench-ctl status|start|stop" >&2; exit 2 ;;
+  *) echo "usage: omabench3d-ctl status|start|stop" >&2; exit 2 ;;
 esac

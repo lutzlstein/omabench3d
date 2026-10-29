@@ -112,7 +112,7 @@ void ABenchGameMode::ParseArgs()
 		else if (!T.IsEmpty() && T != TEXT("T1") && T != TEXT("T2") && T != TEXT("T3")) UE_LOG(LogOmaBench, Warning, TEXT("Unknown/unimplemented test %s skipped."), *T);
 		if (TestIds.IsEmpty()) TestIds.Add(TEXT("T1"));
 	}
-	const FString Dir = FPaths::Combine(FPlatformMisc::GetEnvironmentVariable(TEXT("HOME")), TEXT(".local/share/omabench/results"));
+	const FString Dir = FPaths::Combine(FPlatformMisc::GetEnvironmentVariable(TEXT("HOME")), TEXT(".local/share/omabench3d/results"));
 	if (!FParse::Value(Cmd, TEXT("-runid="), RunId)) RunId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
 	if (!FParse::Value(Cmd, TEXT("-results="), ResultsPath)) ResultsPath = FPaths::Combine(Dir, RunId + TEXT(".json"));
 	if (!FParse::Value(Cmd, TEXT("-progress="), ProgressPath)) ProgressPath = FPaths::Combine(Dir, TEXT("progress.json"));

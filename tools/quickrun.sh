@@ -5,9 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 T="${1:-T1,T2,T3}"; W="${WARM:-3}"; D="${DUR:-20}"
-P=~/.local/share/omabench/results/progress.json; L=~/.local/share/omabench/last-run.log
+P=~/.local/share/omabench3d/results/progress.json; L=~/.local/share/omabench3d/last-run.log
 while pgrep -x OmaBench >/dev/null; do sleep 1; done
-R=$(plugin/bin/omabench-ctl start "$PWD/Packaged/Linux/OmaBench.sh" "$T" 1920x1080 1 0 1 "$W" "$D" DP-3 ${EXTRA:-} | tail -1)
+R=$(plugin/bin/omabench3d-ctl start "$PWD/Packaged/Linux/OmaBench.sh" "$T" 1920x1080 1 0 1 "$W" "$D" DP-3 ${EXTRA:-} | tail -1)
 until grep -q "\"$R\"" "$P" 2>/dev/null && grep -q '"state": "\(done\|aborted\|failed\)' "$P"; do sleep 1; done
 while pgrep -x OmaBench >/dev/null; do sleep 1; done
 grep -a 'score=' "$L" | sed 's/.*OmaBench //'

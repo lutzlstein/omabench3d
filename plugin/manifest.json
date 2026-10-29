@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.lutzlstein.omabench",
-  "name": "OmaBench",
+  "id": "io.github.lutzlstein.omabench3d",
+  "name": "OmaBench3D",
   "version": "0.2.0",
   "author": "Cory Blische",
   "license": "MIT",
-  "description": "Run the OmaBench UE5 GPU benchmark from a terminal-style panel: pick tests and settings, watch progress, see results and history.",
+  "description": "Run the OmaBench3D UE5 GPU benchmark from a terminal-style panel: pick tests and settings, watch progress, see results and history.",
   "kinds": [
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "ui3/OmaBenchWidget.qml"
+    "barWidget": "ui3/OmaBench3DWidget.qml"
   },
   "barWidget": {
-    "displayName": "OmaBench",
+    "displayName": "OmaBench3D",
     "description": "Benchmark panel: tests, config, run/abort with progress, results history",
     "category": "Developer Tools",
     "allowMultiple": false,
@@ -113,5 +113,6 @@
         "description": "omarchy = match current Omarchy theme, or a preset name (maine-autumn-sunset, hackerman, retro-82, tokyo-night, catppuccin)."
       }
     ]
-  }
+  },
+  "homepage": "https://github.com/lutzlstein/omabench3d"
 }
