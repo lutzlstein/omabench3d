@@ -55,15 +55,15 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Grid Double (OFL, widget/fonts/OFL.txt), loaded from the plugin folder only.
-  FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountGridDouble-Medium.ttf") }
+  // Bitcount Prop Single (OFL, panel/fonts/OFL.txt), loaded from the plugin folder only.
+  FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
     ? Math.max(0, Math.min(100, Math.round(100 * progress.elapsedS / progress.totalS))) : 0
 
   function pixelBar(p, n) {
     const k = Math.max(0, Math.min(n, Math.round(p * n / 100)))
-    return "▮".repeat(k) + "▯".repeat(n - k)
+    return "|".repeat(k) + ".".repeat(n - k)
   }
   readonly property string label: {
     if (benchState === "missing") return "[OMABENCH] N/A"
@@ -173,7 +173,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: (root.bar && root.bar.vertical) ? (root.running ? "▮" : "▣") : root.label
+    text: (root.bar && root.bar.vertical) ? (root.running ? "|" : "#") : root.label
     fontFamily: root.mono
     foreground: root.running ? Commons.Color.accent : (root.bar ? root.bar.barForeground : Commons.Color.foreground)
     tooltipText: root.opened ? "" : (root.benchState === "missing"
@@ -238,7 +238,7 @@ Panel {
           width: parent.width; color: root.dim; font.pixelSize: Style.font.small || 10; elide: Text.ElideRight
           text: "OMB-T1 // NEXUS  ::  ESPER DIAG " + (root.history.length ? String(root.history[0].runId || "").slice(-6) : "000000")
         }
-        Mono { width: parent.width; color: root.dim; text: "─".repeat(48); clip: true }
+        Rectangle { width: parent.width; height: Math.max(1, Style.space(1)); color: root.dim; opacity: 0.6 }
 
         Mono { text: "> TESTS"; color: root.dim }
         Repeater {
@@ -259,9 +259,9 @@ Panel {
               width: parent.width - valText.implicitWidth - Style.space(12)
               color: rowItem.test && !rowItem.test.available ? root.dim : root.fg
               text: rowItem.test
-                ? (rowItem.sel ? "▸ " : "  ") + (rowItem.test.available ? (root.selectedTests().indexOf(rowItem.test.id) >= 0 ? "[X] " : "[ ] ") : "[-] ")
+                ? (rowItem.sel ? "> " : "  ") + (rowItem.test.available ? (root.selectedTests().indexOf(rowItem.test.id) >= 0 ? "[X] " : "[ ] ") : "[-] ")
                   + rowItem.test.id + " " + rowItem.test.name.toUpperCase()
-                : (rowItem.sel ? "▸ " : "  ") + (rowItem.row.label || "")
+                : (rowItem.sel ? "> " : "  ") + (rowItem.row.label || "")
             }
             Mono {
               id: valText
@@ -279,7 +279,7 @@ Panel {
           }
         }
 
-        Mono { width: parent.width; color: root.dim; text: "─".repeat(48); clip: true }
+        Rectangle { width: parent.width; height: Math.max(1, Style.space(1)); color: root.dim; opacity: 0.6 }
 
         // RUN / ABORT + progress
         Rectangle {
@@ -299,10 +299,10 @@ Panel {
             anchors.centerIn: parent
             font.bold: true; font.pixelSize: Style.font.subtitle
             color: root.running ? root.ac : Commons.Color.popups.background
-            text: (runBtn.sel ? "▸ " : "") + (root.benchState === "missing" ? "NOT INSTALLED"
+            text: (runBtn.sel ? "> " : "") + (root.benchState === "missing" ? "NOT INSTALLED"
               : root.running ? "ABORT  " + root.pixelBar(root.pct, 10) + " " + root.pct + "%"
                 + (root.progress ? "  P" + root.progress.pass + "/" + root.progress.passes : "")
-              : "▶ RUN")
+              : "> RUN")
           }
           MouseArea { anchors.fill: parent; onClicked: root.toggleRun() }
         }
@@ -322,22 +322,26 @@ Panel {
         Mono { text: "> HISTORY"; color: root.dim; visible: root.history.length > 1 }
         Repeater {
           model: Math.max(0, Math.min(7, root.history.length - 1))
-          delegate: Mono {
+          // Proportional font: fixed columns instead of space padding.
+          delegate: Item {
+            id: hRow
             required property int index
             readonly property var h: root.history[index + 1]
-            width: col.width
-            color: root.dim
-            text: "  " + root.fmtDate(h.date) + "  " + String(h.aborted ? "ABORT" : (h.score ?? "—")).padStart(6) + "  " + (h.res || "") + "  " + (h.monitor || "")
+            width: col.width; height: hDate.implicitHeight
+            Mono { id: hDate; x: Style.space(12); color: root.dim; text: root.fmtDate(hRow.h.date) }
+            Mono { x: col.width * 0.30; width: col.width * 0.16; horizontalAlignment: Text.AlignRight; color: root.dim
+                   text: String(hRow.h.aborted ? "ABORT" : (hRow.h.score ?? "—")) }
+            Mono { x: col.width * 0.52; width: col.width * 0.48; color: root.dim; text: (hRow.h.res || "") + "  " + (hRow.h.monitor || "") }
           }
         }
 
         Mono {
           readonly property bool sel: root.rows[root.cursor] && root.rows[root.cursor].kind === "open"
-          text: (sel ? "▸ " : "  ") + "[ OPEN RESULTS FOLDER ]"
+          text: (sel ? "> " : "  ") + "[ OPEN RESULTS FOLDER ]"
           color: openMa.containsMouse || sel ? root.ac : root.fg
           MouseArea { id: openMa; anchors.fill: parent; hoverEnabled: true; onClicked: root.openResults() }
         }
-        Mono { color: root.dim; font.pixelSize: Style.font.caption; text: "↑↓ select · ←→/click change · ⏎ toggle · esc close" }
+        Mono { color: root.dim; font.pixelSize: Style.font.caption; text: "UP/DN select · L/R/click change · ENTER toggle · ESC close" }
       }
     }
   }
