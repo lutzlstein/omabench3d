@@ -20,7 +20,7 @@ Panel {
   ipcTarget: "io.github.lutzlstein.omabench3d"
 
   // ---- Config model (inline shell.json entry) -------------------------
-  readonly property string appPath: String(setting("appPath", "~/Projects/omabench/Packaged/Linux/OmaBench.sh"))
+  readonly property string appPath: String(setting("appPath", "auto"))
   readonly property string resolution: String(setting("resolution", "native"))
   readonly property int passes: Math.max(1, Math.min(5, Number(setting("passes", 1)) || 1))
   readonly property bool fullscreen: setting("fullscreen", true) === true
@@ -143,8 +143,17 @@ Panel {
   function openResults() {
     Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.local/share/omabench3d/results"])
   }
+  property var install: null   // {state: downloading|verifying|unpacking|done|failed, msg}
+  readonly property bool installing: install && ["downloading", "verifying", "unpacking"].indexOf(install.state) >= 0
+    && Date.now() / 1000 - (install.at || 0) < 900
+  function installApp() {
+    if (installing) return
+    install = { state: "downloading", msg: "starting", at: Date.now() / 1000 }
+    Quickshell.execDetached([ctl, "install-app"])
+    pollTimer.restart()
+  }
   function toggleRun() {
-    if (benchState === "missing") { refresh(); return }
+    if (benchState === "missing") { installApp(); return }
     if (running) {
       Quickshell.execDetached([ctl, "stop"])
       benchState = "idle"
@@ -164,13 +173,14 @@ Panel {
   implicitHeight: button.implicitHeight
 
   // Bar status: idle (no badge) | run (pulsing play) | done (check) | abort (x) | fail (warning)
-  readonly property string status: (benchState === "missing" || benchState === "error") ? "fail"
+  readonly property string status: installing ? "run" : (benchState === "error" || (benchState === "missing" && install && install.state === "failed")) ? "fail"
+    : benchState === "missing" ? "idle"
     : running ? "run" : lastAborted ? "abort" : lastScore !== null ? "done" : "idle"
   readonly property color barFg: root.bar ? root.bar.barForeground : Commons.Color.foreground
   readonly property color statusColor: status === "run" ? Commons.Color.accent
     : status === "fail" ? Commons.Color.urgent : status === "abort" ? Commons.Color.muted : root.barFg
   readonly property string tip: {
-    if (benchState === "missing") return "omabench3d · app not installed\nClick: panel → INSTALL APP"
+    if (benchState === "missing") return root.installing ? "omabench3d · installing app (" + root.install.state + ")" : "omabench3d · app not installed\nClick: panel → INSTALL APP"
     if (benchState === "error") return "omabench3d · error (see last-run.log)"
     let s = "omabench3d"
     if (status === "run") s += " · running" + (pct > 0 ? " " + pct + "%" : " (booting)")
@@ -194,7 +204,7 @@ Panel {
     Item {
       id: glyphs
       anchors.centerIn: parent
-      readonly property int s: Math.round(Style.font.icon * 1.05)
+      readonly property int s: Math.round(Style.font.icon * 1.15)
       readonly property int b: Math.round(s * 0.55)
       readonly property bool v: root.bar && root.bar.vertical
       property real pulse: 1
@@ -277,7 +287,7 @@ Panel {
           Mono {
             anchors.right: parent.right; anchors.verticalCenter: hdr.verticalCenter
             color: root.running ? root.ac : root.dim
-            text: (root.benchState === "idle" && root.lastAborted) ? "ABORTED" : ({ checking: "BOOT…", missing: "NOT INSTALLED", idle: "READY_", starting: "STARTING…",
+            text: (root.benchState === "idle" && root.lastAborted) ? "ABORTED" : ({ checking: "BOOT…", missing: "APP MISSING", idle: "READY_", starting: "STARTING…",
                      running: "RUNNING", error: "ERROR" })[root.benchState] || root.benchState
           }
         }
@@ -335,7 +345,7 @@ Panel {
           width: parent.width; height: runText.implicitHeight + Style.space(14)
           color: root.running ? "transparent" : root.ac
           border.color: root.ac; border.width: Math.max(1, Style.space(2))
-          opacity: root.benchState === "missing" ? 0.4 : 1
+          opacity: root.installing ? 0.6 : 1
           Rectangle {  // live progress fill
             visible: root.running
             anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
@@ -346,7 +356,9 @@ Panel {
             anchors.centerIn: parent
             font.bold: true; font.pixelSize: Style.font.subtitle
             color: root.running ? root.ac : Commons.Color.popups.background
-            text: (runBtn.sel ? "> " : "") + (root.benchState === "missing" ? "NOT INSTALLED"
+            text: (runBtn.sel ? "> " : "") + (root.benchState === "missing"
+              ? (root.installing ? "INSTALLING… " + root.install.state.toUpperCase()
+                 : root.install && root.install.state === "failed" ? "INSTALL FAILED (" + root.install.msg + ") · RETRY" : "INSTALL APP")
               : root.running ? "ABORT  " + root.pixelBar(root.pct, 10) + " " + root.pct + "%"
                 + (root.progress ? "  " + (root.progress.testCount > 1 ? (root.progress.test || "") + " " : "") + "P" + root.progress.pass + "/" + root.progress.passes : "")
               : "> RUN")
@@ -402,7 +414,7 @@ Panel {
   // ---- Polling / ctl processes -----------------------------------------
   Timer {
     id: pollTimer
-    interval: root.running ? 1500 : 15000
+    interval: (root.running || root.installing) ? 1500 : 15000
     repeat: true; running: true; triggeredOnStart: true
     onTriggered: root.refresh()
   }
@@ -417,6 +429,7 @@ Panel {
           root.progress = s.progress
           root.lastScore = s.lastScore
           root.lastAborted = s.lastAborted === true
+          root.install = s.install || null
           if (!s.installed) root.benchState = "missing"
           else if (s.running) root.benchState = "running"
           else if (root.benchState === "starting" && Date.now() - root.startRequestedAt < 5000) {}
