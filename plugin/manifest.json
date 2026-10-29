@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.lutzlstein.omabench",
+  "name": "OmaBench",
+  "version": "0.1.0",
+  "author": "Cory Blische",
+  "license": "MIT",
+  "description": "Launch the OmaBench UE5 GPU benchmark from the bar and see progress and your last score.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaBench",
+    "description": "Start/stop the OmaBench GPU benchmark; shows progress and last score",
+    "category": "Developer Tools",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "appPath": "~/Projects/omabench/Packaged/Linux/OmaBench.sh",
+      "tests": "T1",
+      "resolution": "native",
+      "passes": 1,
+      "fullscreen": true,
+      "quick": false
+    },
+    "schema": [
+      {
+        "key": "appPath",
+        "type": "path",
+        "label": "Benchmark launcher",
+        "defaultValue": "~/Projects/omabench/Packaged/Linux/OmaBench.sh",
+        "description": "Path to the packaged OmaBench.sh."
+      },
+      {
+        "key": "tests",
+        "type": "string",
+        "label": "Tests",
+        "defaultValue": "T1",
+        "description": "Comma-separated test IDs (T1 for now)."
+      },
+      {
+        "key": "resolution",
+        "type": "enum",
+        "label": "Resolution",
+        "defaultValue": "native",
+        "options": [
+          "native",
+          "1920x1080",
+          "2560x1440",
+          "3840x2160"
+        ]
+      },
+      {
+        "key": "passes",
+        "type": "integer",
+        "label": "Passes",
+        "defaultValue": 1,
+        "min": 1,
+        "max": 5,
+        "step": 1
+      },
+      {
+        "key": "fullscreen",
+        "type": "boolean",
+        "label": "Fullscreen",
+        "defaultValue": true
+      },
+      {
+        "key": "quick",
+        "type": "boolean",
+        "label": "Quick preset",
+        "defaultValue": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# omabench-ctl: narrow launcher/status helper for the OmaBench shell plugin.
+# Runs outside the shell process; the QML only ever calls this with argv.
+#   omabench-ctl status <appPath>
+#   omabench-ctl start  <appPath> <tests> <WxH|native> <passes> <fullscreen 0|1> <quick 0|1> [warmupS durationS]
+#   omabench-ctl stop
+set -uo pipefail
+
+data="${XDG_DATA_HOME:-$HOME/.local/share}/omabench"
+results="$data/results"
+rundir="${XDG_RUNTIME_DIR:-$data}/omabench"
+pidfile="$rundir/run.pid"
+logfile="$data/last-run.log"
+
+expand() { local p="$1"; [[ "$p" == "~/"* ]] && p="$HOME/${p#\~/}"; printf '%s' "$p"; }
+
+running_pid() {
+  [[ -f "$pidfile" ]] || return 1
+  local pid; pid="$(head -c 16 "$pidfile" | tr -cd '0-9')"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null || return 1
+  # Only trust the pid if it is still a process group we started.
+  [[ "$(ps -o pgid= -p "$pid" | tr -d ' ')" == "$pid" ]] || return 1
+  printf '%s' "$pid"
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  status)
+    app="$(expand "${2:-}")"
+    installed=false; [[ -n "$app" && -x "$app" ]] && installed=true
+    pid="$(running_pid)" && running=true || { running=false; pid=null; }
+    progress=null
+    [[ -f "$results/progress.json" ]] && progress="$(head -c 4096 "$results/progress.json" | tr -d '\n\t')"
+    last="$(ls -t "$results"/*.json 2>/dev/null | grep -v '/progress.json$' | head -1)"
+    score=null; runid=""
+    if [[ -n "$last" ]]; then
+      runid="$(basename "$last" .json | tr -cd 'A-Za-z0-9._-')"
+      score="$(head -c 65536 "$last" | tr -d '\n\t ' | grep -o '"scores":{"gpu":[0-9]*' | grep -o '[0-9]*$')"
+      [[ -z "$score" ]] && score=null
+    fi
+    printf '{"installed":%s,"running":%s,"pid":%s,"lastRunId":"%s","lastScore":%s,"progress":%s}\n' \
+      "$installed" "$running" "$pid" "$runid" "$score" "$progress"
+    ;;
+  start)
+    app="$(expand "${2:-}")"; tests="${3:-T1}"; res="${4:-native}"; passes="${5:-1}"
+    fs="${6:-1}"; quick="${7:-0}"; warm="${8:-}"; dur="${9:-}"
+    [[ -x "$app" ]] || { echo "not installed: $app" >&2; exit 3; }
+    running_pid >/dev/null && { echo "already running" >&2; exit 4; }
+    [[ "$tests" =~ ^[A-Za-z0-9,]{1,64}$ ]] || { echo "bad tests" >&2; exit 2; }
+    [[ "$passes" =~ ^[1-9]$ ]] || { echo "bad passes" >&2; exit 2; }
+    runid="plugin-$(date +%Y%m%d-%H%M%S)"
+    args=("-tests=$tests" "-passes=$passes" "-runid=$runid")
+    if [[ "$res" =~ ^[0-9]{3,5}x[0-9]{3,5}$ ]]; then args+=("-res=$res"); elif [[ "$res" != native ]]; then echo "bad res" >&2; exit 2; fi
+    [[ "$fs" == 1 ]] && args+=(-fullscreen) || args+=(-windowed)
+    [[ "$quick" == 1 ]] && args+=(-quick)
+    [[ "$warm" =~ ^[0-9]{1,3}$ ]] && args+=("-warmup=$warm")
+    [[ "$dur" =~ ^[0-9]{1,4}$ ]] && args+=("-duration=$dur")
+    mkdir -p "$rundir" "$results"
+    # New session => own process group, detached from the shell.
+    setsid bash -c 'echo $$ > "$0"; exec "$@"' "$pidfile" "$app" "${args[@]}" >"$logfile" 2>&1 </dev/null &
+    disown
+    echo "$runid"
+    ;;
+  stop)
+    pid="$(running_pid)" || { echo "not running"; exit 0; }
+    kill -TERM -- "-$pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.3; done
+    kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null
+    rm -f "$pidfile"; echo stopped
+    ;;
+  *) echo "usage: omabench-ctl status|start|stop" >&2; exit 2 ;;
+esac
