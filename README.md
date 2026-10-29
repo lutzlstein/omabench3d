@@ -5,6 +5,25 @@ UE5 GPU benchmark (T1 City Night, T2 Skyline, T3 Downpour) plus an Omarchy shell
 The UE project/module keep the internal name `OmaBench` (packaged launcher `Packaged/Linux/OmaBench.sh`).
 
 
+## Install (Omarchy 4)
+
+Needs a Vulkan GPU driver (stock Omarchy ships `vulkan-icd-loader` + the NVIDIA/AMD/Intel ICD) and `curl`, `zstd`, `jq`
+(all on stock Omarchy). Fonts and the Vulkan loader are bundled; the game links only glibc/libgcc.
+
+```bash
+omarchy plugin add https://github.com/lutzlstein/omabench3d --enable   # clones the repo, validates, places the bar widget
+omarchy-shell shell rescanPlugins                                      # only if the icon does not appear
+```
+
+Then click the barbell icon → **INSTALL APP**: the plugin downloads `omabench3d-linux-x86_64.tar.zst` from the latest
+GitHub Release, checks its `.sha256`, and unpacks it into `~/.local/share/omabench3d/app` (~660 MB). CLI equivalent:
+`~/.config/omarchy/plugins/io.github.lutzlstein.omabench3d/plugin/bin/omabench3d-ctl install-app`
+(`OMABENCH3D_RELEASE_URL=file:///path/to/omabench3d-linux-x86_64.tar.zst` installs a local tarball).
+`appPath` defaults to `auto` (installed app, else a local `Packaged/` dev build).
+
+Maintainers: `tools/package.sh` builds `Packaged/`, `tools/release.sh` builds `dist/*.tar.zst` + `.sha256`,
+`tools/sync-manifest.sh` keeps the root `manifest.json` in step with `plugin/manifest.json`.
+
 ## Tests and scoring (v0.4)
 
 | Test | Scene | RT profile (applied at runtime per test, recorded in `tests[].rtConfig`) |
