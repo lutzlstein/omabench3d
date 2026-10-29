@@ -279,7 +279,7 @@ void ABenchGameMode::BuildScene()
 				Signs[Rng.RandRange(0, 4)]->AddInstance(FTransform(FRotator::ZeroRotator, Pos, bOnX ? Scale : FVector(Scale.Y, Scale.X, Scale.Z))); ++SignCount;
 				if (bFacing && (FMath::Abs(GX) <= 4 || bNearRoute) && Pos.Z < 9000) SignLights.Add(Pos + (bOnX ? FVector(Side * 150, 0, 0) : FVector(0, Side * 150, 0)));
 			}
-			Z += H; Wd *= Rng.FRandRange(0.72f, 0.95f); ++Count;
+			Z += H; Wd *= Rng.FRandRange(0.72f, 0.95f); ++Count; CellTop.FindOrAdd(FIntPoint(GX, GY)) = Z;
 		}
 	}
 	// Moonless sky, dim accent-tinted fill, dense wet haze.
@@ -472,7 +472,7 @@ void ABenchGameMode::UpdateCamera(double T)
 
 // Per-test ray tracing config, applied at runtime when a test activates.
 // T1 City Night keeps the project defaults (HW Lumen GI + reflections, surface-cache lighting,
-// 1 reflection bounce, raster shadow maps). T2 Off-World Hangar turns everything up: hit-lighting
+// 1 reflection bounce, raster shadow maps). T2 Skyline turns everything up: hit-lighting
 // reflections, multi-bounce reflections/refraction, translucent front-layer reflections, RT shadows.
 TSharedRef<FJsonObject> ABenchGameMode::ApplyRtConfig(const FString& Id)
 {
@@ -509,13 +509,13 @@ void ABenchGameMode::ActivateTest(int32 Index)
 {
 	CurrentTest = Index;
 	const FString Id = GetTestId();
-	for (AActor* A : T1Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T1"));
+	// T2 Skyline reuses the City Night city as its surroundings; only T1's placeholder cube traffic is swapped out.
+	for (AActor* A : T1Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T1") && Cars.Contains(A));
 	for (AActor* A : T2Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T2"));
-	if (Camera) { TArray<UInstancedStaticMeshComponent*> R; Camera->GetComponents(R); for (auto* C : R) C->SetVisibility(Id == TEXT("T1")); }
 	if (RtConfigs.Num() <= Index) RtConfigs.SetNum(Index + 1);
 	RtConfigs[Index] = ApplyRtConfig(Id);
 	PathTime = 0;
-	if (Id == TEXT("T2")) UpdateHangarCamera(0); else UpdateCamera(0);
+	if (Id == TEXT("T2")) UpdateSkyline(0); else UpdateCamera(0);
 }
 
 void ABenchGameMode::BeginPlay()
@@ -532,7 +532,7 @@ void ABenchGameMode::BeginPlay()
 		for (AActor* A : Mid) if (!Before.Contains(A) && A != Camera && !A->IsA<APostProcessVolume>()) T1Actors.Add(A);
 		if (TestIds.Contains(TEXT("T2")))
 		{
-			BuildHangar();
+			BuildSkyline();
 			for (AActor* A : Snap()) if (!Mid.Contains(A)) T2Actors.Add(A);
 		}
 		ActivateTest(0);
@@ -598,7 +598,7 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	}
 	if (Phase == EBenchPhase::Init) { if (++InitFrames > 5) { Phase = EBenchPhase::Warmup; PhaseTime = 0; } return; }
 	TotalElapsed += Dt; PhaseTime += Dt; PathTime += Dt;
-	if (GetTestId() == TEXT("T2")) UpdateHangarCamera(FMath::Fmod(PathTime, 60.0));
+	if (GetTestId() == TEXT("T2")) UpdateSkyline(FMath::Fmod(PathTime, 60.0));
 	else { UpdateCamera(FMath::Fmod(PathTime, 60.0)); UpdateCars(PathTime); }
 	if (Phase == EBenchPhase::Warmup)
 	{

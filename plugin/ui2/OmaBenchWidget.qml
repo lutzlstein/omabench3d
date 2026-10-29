@@ -34,7 +34,7 @@ Panel {
   // Data-driven test catalogue: add T3 here when the app ships it. Multi-select runs in order; GPU score = geomean.
   readonly property var testCatalog: [
     { id: "T1", name: "City Night", detail: "raster · lumen · rain", available: true },
-    { id: "T2", name: "Off-World Hangar", detail: "hw rt · reflections · rt shadows", available: true },
+    { id: "T2", name: "Skyline", detail: "hw rt · reflections · rt shadows", available: true },
     { id: "T3", name: "CPU Sim", detail: "coming soon", available: false }
   ]
 

@@ -46,7 +46,7 @@ public:
 	FString GetTestName() const { return TestName(GetTestId()); }
 	int32 GetTestIndex() const { return CurrentTest; }
 	int32 GetTestCount() const { return TestIds.Num(); }
-	static FString TestName(const FString& Id) { return Id == TEXT("T2") ? FString(TEXT("Off-World Hangar")) : FString(TEXT("City Night")); }
+	static FString TestName(const FString& Id) { return Id == TEXT("T2") ? FString(TEXT("Skyline")) : FString(TEXT("City Night")); }
 	int32 GetPass() const { return FMath::Min(CurrentPass + 1, Passes); }
 	int32 GetPasses() const { return Passes; }
 	double GetLiveFps() const { return LiveFps; }
@@ -65,17 +65,23 @@ private:
 	void LoadPalette();
 	void ApplyVideoSettings();
 	void BuildScene();
-	void BuildHangar();
-	void UpdateHangarCamera(double T);
+	struct FCarLane { FVector Origin; FVector Dir; float Speed; float Len; float Phase; };
+	void BuildSkyline();
+	void UpdateSkyline(double T);
+	TMap<FIntPoint, float> CellTop;            // top Z of each city tower cell (recorded by BuildScene, no RNG use)
+	FVector RoofCentre = FVector::ZeroVector; float RoofTop = 0;
+	UPROPERTY() TObjectPtr<AActor> Hero;
+	UPROPERTY() TArray<TObjectPtr<class UMaterialInstanceDynamic>> HeroFlash;   // [red, blue]
+	UPROPERTY() TArray<TObjectPtr<class UPointLightComponent>> HeroLights;      // [red, blue]
+	UPROPERTY() TArray<TObjectPtr<AActor>> Traffic;
+	TArray<FCarLane> TrafficLanes;
 	void ActivateTest(int32 Index);
 	TSharedRef<class FJsonObject> ApplyRtConfig(const FString& Id);
-	static const FVector HangarOrigin;
 	TArray<FString> TestIds; int32 CurrentTest = 0;
 	TArray<TArray<TArray<float>>> TestPassFrames;
 	TArray<TSharedPtr<class FJsonObject>> RtConfigs;
 	void UpdateCamera(double T);
 	void UpdateCars(double T);
-	struct FCarLane { FVector Origin; FVector Dir; float Speed; float Len; float Phase; };
 	TArray<FCarLane> Lanes;
 	void WriteProgress(const TCHAR* State);
 	void FinishRun();
