@@ -68,19 +68,31 @@ running_pid() {
 cmd="${1:-status}"
 # Poll (<=15 s) for the OmaBench client, then float/resize/centre that one window.
 float_window() {
-  local res="$1" mon="$2" w h addr="" i mj mw mh
+  # Float the benchmark window at exactly the requested size, centered on the target
+  # monitor. Match on class only (a title match could grab e.g. a browser tab named
+  # after the repo), never clamp to the monitor, and re-apply until the client
+  # reports the requested geometry (UE may resize itself right after mapping).
+  local res="$1" mon="$2" w h addr="" i mj mx my mw mh x y cur
   w="${res%x*}"; h="${res#*x}"
-  for i in $(seq 1 60); do
-    addr="$(hyprctl clients -j 2>/dev/null | jq -r '[.[] | select((.class|test("omabench";"i")) or (.title|test("^OmaBench";"i")))][0].address // empty')"
+  [[ "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]] || return 0
+  for i in $(seq 1 80); do
+    addr="$(hyprctl clients -j 2>/dev/null | jq -r '[.[] | select(.class|test("^omabench";"i"))][0].address // empty')"
     [[ -n "$addr" ]] && break; sleep 0.25
   done
   [[ -n "$addr" ]] || return 0
-  mj="$(hyprctl monitors -j 2>/dev/null | jq -c --arg m "$mon" '[.[] | select(.name == $m or $m == "")][0]')"
+  mj="$(hyprctl monitors -j 2>/dev/null | jq -c --arg m "$mon" '([.[] | select(.name == $m)] + [.[] | select(.focused)] + .)[0]')"
+  mx="$(jq -r '.x // 0' <<<"$mj")"; my="$(jq -r '.y // 0' <<<"$mj")"
   mw="$(jq -r '.width // 0' <<<"$mj")"; mh="$(jq -r '.height // 0' <<<"$mj")"
-  (( mw > 0 && w > mw )) && w=$mw; (( mh > 0 && h > mh )) && h=$mh
-  hyprctl dispatch "hl.dsp.window.float({ action = \"enable\", window = \"address:$addr\" })"
-  hyprctl dispatch "hl.dsp.window.resize({ x = $w, y = $h, window = \"address:$addr\" })"
-  hyprctl dispatch "hl.dsp.window.center({ window = \"address:$addr\" })"
+  x=$(( mx + (mw - w) / 2 )); y=$(( my + (mh - h) / 2 ))
+  for i in 1 2 3 4 5 6; do
+    hyprctl dispatch "hl.dsp.window.float({ action = \"enable\", window = \"address:$addr\" })"
+    hyprctl dispatch "hl.dsp.window.resize({ x = $w, y = $h, window = \"address:$addr\" })"
+    hyprctl dispatch "hl.dsp.window.move({ x = $x, y = $y, window = \"address:$addr\" })"
+    sleep 0.5
+    cur="$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a) | "\(.size[0])x\(.size[1])@\(.at[0]),\(.at[1])"')"
+    [[ -z "$cur" ]] && return 0
+    [[ "$cur" == "${w}x${h}@${x},${y}" ]] && sleep 1.5 && continue
+  done
 }
 
 case "$cmd" in

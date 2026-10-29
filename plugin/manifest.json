@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.lutzlstein.omabench3d",
   "name": "OmaBench3D",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Cory Blische",
   "license": "MIT",
   "description": "Run the OmaBench3D UE5 GPU benchmark from a terminal-style panel: pick tests and settings, watch progress, see results and history.",
