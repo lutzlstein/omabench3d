@@ -63,16 +63,5 @@ L.connect_material_property(pc, "", MP.MP_BASE_COLOR)
 L.connect_material_property(custom(m, "return 0.95;", [], -400, 600), "", MP.MP_ROUGHNESS)
 L.recompile_material(m)
 
-# Drone body: lit dark metal, emissive tint from particle colour on the emissive slots handled by the mesh (single material).
-m = base("M_FxDrone", unreal.BlendMode.BLEND_OPAQUE, unlit=False)
-pc = ex(m, unreal.MaterialExpressionParticleColor, -900, 0)
-L.connect_material_property(custom(m, "return float3(0.03, 0.035, 0.04);", [], -400, -100, unreal.CustomMaterialOutputType.CMOT_FLOAT3), "", MP.MP_BASE_COLOR)
-L.connect_material_property(custom(m, "return 0.8;", [], -400, 50), "", MP.MP_METALLIC)
-L.connect_material_property(custom(m, "return 0.3;", [], -400, 150), "", MP.MP_ROUGHNESS)
-vc = ex(m, unreal.MaterialExpressionVertexNormalWS, -900, 300)
-em = custom(m, "return C.rgb * 30 * step(0.6, -N.z);", ["C", "N"], -400, 300, unreal.CustomMaterialOutputType.CMOT_FLOAT3)  # glowing belly
-L.connect_material_expressions(pc, "", em, "C"); L.connect_material_expressions(vc, "", em, "N")
-L.connect_material_property(em, "", MP.MP_EMISSIVE_COLOR)
-L.recompile_material(m)
-for n in ("M_FxRain", "M_FxSpark", "M_FxSmoke", "M_FxDrone"): unreal.EditorAssetLibrary.save_asset(f"{DIR}/{n}")
+for n in ("M_FxRain", "M_FxSpark", "M_FxSmoke"): unreal.EditorAssetLibrary.save_asset(f"{DIR}/{n}")
 unreal.log("OMABENCH_T3_MATERIALS_DONE")

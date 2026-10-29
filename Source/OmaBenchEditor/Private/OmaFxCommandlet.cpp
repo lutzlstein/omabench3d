@@ -180,7 +180,6 @@ int32 UOmaFxCommandlet::Main(const FString& Params)
 		auto UI = [&](const TCHAR* N, int32 D) { FNiagaraExt_UserVariable UV; UV.Name = FName(FString(TEXT("User.")) + N); UV.Type = FNiagaraTypeDefinition::GetIntDef(); UV.DefaultValue.Set(UV.Type, FNiagaraVariant(&D, sizeof(D))); U::AddUserVariable(Sys, UV, *B.C); };
 		if (Name == TEXT("NS_Rain")) UF(TEXT("RainRate"), 400000.f);
 		if (Name == TEXT("NS_Splash")) UF(TEXT("SplashRate"), 120000.f);
-		if (Name == TEXT("NS_Sparks")) {  }
 		if (Name == TEXT("NS_Steam")) UF(TEXT("SteamRate"), 600.f);
 		if (Name == TEXT("NS_Smoke")) UF(TEXT("SmokeRate"), 300.f);
 		B.Flush(TEXT("user vars"));
@@ -232,6 +231,10 @@ int32 UOmaFxCommandlet::Main(const FString& Params)
 		FName Cn = B.Add(TEXT("PS"), TEXT("Cone")); B.Set(TEXT("PS"), Cn, TEXT("Cone Angle"), TEXT("35")); B.Set(TEXT("PS"), Cn, TEXT("Velocity Strength"), TEXT("260"));
 		B.Add(TEXT("PU"), TEXT("Gravity")); B.Add(TEXT("PU"), TEXT("Solve"));
 		FName Co = B.Add(TEXT("PU"), TEXT("Collision")); B.Set(TEXT("PU"), Co, TEXT("Restitution"), TEXT("0.3"));
+		// Shelter mask: no splashes where the rain cannot reach the street (under the two overpass decks and the
+		// stall awnings along both kerbs); the particles still simulate, so the compute load is unchanged.
+		FName Sc = B.Add(TEXT("PU"), TEXT("ScaleColor"));
+		B.Set(TEXT("PU"), Sc, TEXT("Scale Alpha"), TEXT("=((abs(Particles.Position.x) < 1600 && (abs(Particles.Position.y - 2500) < 380 || abs(Particles.Position.y - 5600) < 380)) || (abs(Particles.Position.x) > 1040 && abs(Particles.Position.x) < 1320 && Particles.Position.y > 650 && Particles.Position.y < 8450 && abs(Particles.Position.y - 6000) > 300)) ? 0.0 : 1.0"));
 		B.Renderer(UNiagaraSpriteRendererProperties::StaticClass(), Sprite(TEXT("/Game/OmaBench/Materials/M_FxRain.M_FxRain"), true));
 	});
 	// Sparks from a failing neon sign: bursty, bouncing on the wet street (depth-buffer collision).
@@ -262,7 +265,7 @@ int32 UOmaFxCommandlet::Main(const FString& Params)
 		FName In = TEXT("InitializeParticle");
 		B.Set(TEXT("PS"), In, TEXT("Lifetime"), TEXT("4.5"));
 		B.Set(TEXT("PS"), In, TEXT("Color Mode"), TEXT("Direct Set"));
-		B.Set(TEXT("PS"), In, TEXT("Color"), TEXT("0.55,0.6,0.68,0.09"));
+		B.Set(TEXT("PS"), In, TEXT("Color"), TEXT("0.55,0.6,0.68,0.05"));
 		B.Set(TEXT("PS"), In, TEXT("Sprite Size Mode"), TEXT("Uniform"));
 		B.Set(TEXT("PS"), In, TEXT("Uniform Sprite Size"), TEXT("70"));
 		FName Sh = B.Add(TEXT("PS"), TEXT("Shape")); B.Set(TEXT("PS"), Sh, TEXT("Shape Primitive"), TEXT("Sphere")); B.Set(TEXT("PS"), Sh, TEXT("Sphere Radius"), TEXT("40"));
@@ -281,7 +284,7 @@ int32 UOmaFxCommandlet::Main(const FString& Params)
 		FName In = TEXT("InitializeParticle");
 		B.Set(TEXT("PS"), In, TEXT("Lifetime"), TEXT("9"));
 		B.Set(TEXT("PS"), In, TEXT("Color Mode"), TEXT("Direct Set"));
-		B.Set(TEXT("PS"), In, TEXT("Color"), TEXT("0.3,0.33,0.4,0.022"));
+		B.Set(TEXT("PS"), In, TEXT("Color"), TEXT("0.3,0.33,0.4,0.012"));
 		B.Set(TEXT("PS"), In, TEXT("Sprite Size Mode"), TEXT("Uniform"));
 		B.Set(TEXT("PS"), In, TEXT("Uniform Sprite Size"), TEXT("650"));
 		FName Sh = B.Add(TEXT("PS"), TEXT("Shape")); B.Set(TEXT("PS"), Sh, TEXT("Shape Primitive"), TEXT("Box"));
