@@ -8,5 +8,16 @@ bash -n "$root/bin/omabench3d-ctl"
 "$root/bin/omabench3d-ctl" summary | python3 -m json.tool >/dev/null
 "$root/bin/omabench3d-ctl" monitors | python3 -m json.tool >/dev/null
 "$root/bin/omabench3d-ctl" themes | python3 -m json.tool >/dev/null
+# repo-root manifest (what `omarchy plugin add <repo-url>` reads) must mirror plugin/manifest.json
+if [[ -f "$root/../manifest.json" ]]; then
+  python3 - "$root" <<'PY'
+import json, sys, os
+r = sys.argv[1]; m = json.load(open(os.path.join(r, "manifest.json"))); t = json.load(open(os.path.join(r, "..", "manifest.json")))
+m["entryPoints"] = {k: "plugin/" + v for k, v in m["entryPoints"].items()}
+assert m == t, "root manifest.json out of sync with plugin/manifest.json (regenerate: tools/sync-manifest.sh)"
+for v in t["entryPoints"].values(): assert os.path.isfile(os.path.join(r, "..", v)), v
+PY
+fi
+"$root/bin/omabench3d-ctl" install-app 'http://bad' >/dev/null 2>&1 && { echo "install-app accepted bad url"; exit 1; }
 if command -v omarchy >/dev/null 2>&1; then omarchy plugin validate "$root"; fi
 printf 'All portable plugin checks passed.\n'

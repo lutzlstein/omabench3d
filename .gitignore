@@ -6,3 +6,4 @@ Packaged/
 *.log
 art/blender/__pycache__/
 art/export/
+dist/

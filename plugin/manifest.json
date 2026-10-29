@@ -19,7 +19,7 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "appPath": "~/Projects/omabench/Packaged/Linux/OmaBench.sh",
+      "appPath": "auto",
       "tests": "T1",
       "resolution": "native",
       "passes": 1,
@@ -33,10 +33,10 @@
     "schema": [
       {
         "key": "appPath",
-        "type": "path",
+        "type": "string",
         "label": "Benchmark launcher",
-        "defaultValue": "~/Projects/omabench/Packaged/Linux/OmaBench.sh",
-        "description": "Path to the packaged OmaBench.sh."
+        "defaultValue": "auto",
+        "description": "auto = app installed from the release (~/.local/share/omabench3d/app), else a local Packaged/ build; or a path to OmaBench.sh."
       },
       {
         "key": "tests",

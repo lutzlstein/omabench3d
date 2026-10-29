@@ -7,6 +7,7 @@
 #   omabench3d-ctl summary     -> last result + newest 8 history entries (JSON)
 #   omabench3d-ctl monitors    -> Hyprland outputs with refresh rates (JSON)
 #   omabench3d-ctl stop
+#   omabench3d-ctl install-app [url]  -> download+verify release into ~/.local/share/omabench3d/app
 set -uo pipefail
 
 data="${XDG_DATA_HOME:-$HOME/.local/share}/omabench3d"
@@ -15,7 +16,45 @@ rundir="${XDG_RUNTIME_DIR:-$data}/omabench3d"
 pidfile="$rundir/run.pid"
 logfile="$data/last-run.log"
 
-expand() { local p="$1"; [[ "$p" == "~/"* ]] && p="$HOME/${p#\~/}"; printf '%s' "$p"; }
+appdir="$data/app"
+installfile="$data/install.json"
+release_url="${OMABENCH3D_RELEASE_URL:-https://github.com/lutzlstein/omabench3d/releases/latest/download/omabench3d-linux-x86_64.tar.zst}"
+
+# "auto" (default): the app installed by install-app, else a local dev build.
+expand() {
+  local p="$1"
+  if [[ -z "$p" || "$p" == auto ]]; then
+    for p in "$appdir/OmaBench.sh" "$HOME/Projects/omabench3d/Packaged/Linux/OmaBench.sh" "$HOME/Projects/omabench/Packaged/Linux/OmaBench.sh"; do
+      [[ -x "$p" ]] && break
+    done
+  fi
+  [[ "$p" == "~/"* ]] && p="$HOME/${p#\~/}"; printf '%s' "$p"
+}
+
+# Download the release tarball + .sha256, verify, unpack into $appdir (atomic swap). Progress -> install.json.
+install_app() {
+  local url="${1:-$release_url}" tmp st
+  [[ "$url" =~ ^(https://|file://)[A-Za-z0-9._~:/@%+-]+\.tar\.zst$ ]] || { echo "bad url" >&2; return 2; }
+  for d in curl zstd tar sha256sum; do command -v "$d" >/dev/null || { st="missing $d"; break; }; done
+  mkdir -p "$data"; st="${st:-}"
+  put() { printf '{"state":"%s","msg":"%s","at":%s}\n' "$1" "$2" "$(date +%s)" > "$installfile.tmp" && mv "$installfile.tmp" "$installfile"; }
+  [[ -n "$st" ]] && { put failed "$st"; echo "$st" >&2; return 1; }
+  tmp="$(mktemp -d "$data/.install.XXXXXX")"
+  put downloading "fetching release"
+  if ! curl -fL --retry 2 -o "$tmp/app.tar.zst" "$url" || ! curl -fL --retry 2 -o "$tmp/app.tar.zst.sha256" "$url.sha256"; then
+    rm -rf "$tmp"; put failed "download failed"; echo "download failed" >&2; return 1
+  fi
+  put verifying "checking sha256"
+  if [[ "$(awk '{print $1}' "$tmp/app.tar.zst.sha256")" != "$(sha256sum "$tmp/app.tar.zst" | awk '{print $1}')" ]]; then
+    rm -rf "$tmp"; put failed "checksum mismatch"; echo "checksum mismatch" >&2; return 1
+  fi
+  put unpacking "extracting"
+  mkdir -p "$tmp/app" && tar --zstd -xf "$tmp/app.tar.zst" -C "$tmp/app" --no-same-owner || { rm -rf "$tmp"; put failed "extract failed"; return 1; }
+  [[ -x "$tmp/app/OmaBench.sh" ]] || { rm -rf "$tmp"; put failed "bad archive layout"; return 1; }
+  rm -rf "$appdir.old"; [[ -d "$appdir" ]] && mv "$appdir" "$appdir.old"
+  mv "$tmp/app" "$appdir" && rm -rf "$tmp" "$appdir.old"
+  put done "installed"; echo "installed to $appdir"
+}
 
 running_pid() {
   [[ -f "$pidfile" ]] || return 1
@@ -59,8 +98,9 @@ case "$cmd" in
       [[ -z "$score" ]] && score=null
       head -c 65536 "$last" | tr -d '\n\t ' | grep -q '"aborted":true' && aborted=true
     fi
-    printf '{"installed":%s,"running":%s,"pid":%s,"lastRunId":"%s","lastScore":%s,"lastAborted":%s,"progress":%s}\n' \
-      "$installed" "$running" "$pid" "$runid" "$score" "$aborted" "$progress"
+    install=null; [[ -f "$installfile" ]] && install="$(head -c 512 "$installfile" | tr -d '\n\t')"
+    printf '{"installed":%s,"running":%s,"pid":%s,"lastRunId":"%s","lastScore":%s,"lastAborted":%s,"progress":%s,"app":"%s","install":%s}\n' \
+      "$installed" "$running" "$pid" "$runid" "$score" "$aborted" "$progress" "${app//\"/}" "$install"
     ;;
   start)
     app="$(expand "${2:-}")"; tests="${3:-T1}"; res="${4:-native}"; passes="${5:-1}"
@@ -143,6 +183,9 @@ case "$cmd" in
     { command ls "$(dirname "$0")/../themes"; for t in hackerman retro-82 tokyo-night catppuccin; do [[ -f /usr/share/omarchy/themes/$t/colors.toml ]] && echo "$t"; done; } \
       | grep -E '^[a-z0-9-]{1,48}$' | awk '!s[$0]++' | head -12 | jq -Rsc 'split("\n")|map(select(.!=""))'
     ;;
+  install-app)   # [url]  foreground; the panel runs it detached and polls status.install
+    install_app "${2:-}"
+    ;;
   stop)
     pid="$(running_pid)" || { echo "not running"; exit 0; }
     kill -TERM -- "-$pid" 2>/dev/null
@@ -150,5 +193,5 @@ case "$cmd" in
     kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null
     rm -f "$pidfile"; echo stopped
     ;;
-  *) echo "usage: omabench3d-ctl status|start|stop" >&2; exit 2 ;;
+  *) echo "usage: omabench3d-ctl status|start|stop|install-app" >&2; exit 2 ;;
 esac
