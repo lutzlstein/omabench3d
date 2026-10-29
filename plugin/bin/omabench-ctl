@@ -3,6 +3,9 @@
 # Runs outside the shell process; the QML only ever calls this with argv.
 #   omabench-ctl status <appPath>
 #   omabench-ctl start  <appPath> <tests> <WxH|native> <passes> <fullscreen 0|1> <quick 0|1> [warmupS durationS [monitor|auto]]
+#        [... monitor pixel(auto|0|2|4|8) hud(1|0) theme(omarchy|preset)]
+#   omabench-ctl summary     -> last result + newest 8 history entries (JSON)
+#   omabench-ctl monitors    -> Hyprland outputs with refresh rates (JSON)
 #   omabench-ctl stop
 set -uo pipefail
 
@@ -44,6 +47,7 @@ case "$cmd" in
   start)
     app="$(expand "${2:-}")"; tests="${3:-T1}"; res="${4:-native}"; passes="${5:-1}"
     fs="${6:-1}"; quick="${7:-0}"; warm="${8:-}"; dur="${9:-}"; mon="${10:-auto}"
+    pixel="${11:-auto}"; hud="${12:-1}"; theme="${13:-omarchy}"
     [[ -x "$app" ]] || { echo "not installed: $app" >&2; exit 3; }
     running_pid >/dev/null && { echo "already running" >&2; exit 4; }
     [[ "$tests" =~ ^[A-Za-z0-9,]{1,64}$ ]] || { echo "bad tests" >&2; exit 2; }
@@ -55,6 +59,21 @@ case "$cmd" in
     [[ "$quick" == 1 ]] && args+=(-quick)
     [[ "$warm" =~ ^[0-9]{1,3}$ ]] && args+=("-warmup=$warm")
     [[ "$dur" =~ ^[0-9]{1,4}$ ]] && args+=("-duration=$dur")
+    case "$pixel" in auto) ;; 0|2|4|8) args+=("-pixel=$pixel") ;; *) echo "bad pixel" >&2; exit 2 ;; esac
+    [[ "$hud" == 0 ]] && args+=(-nohud)
+    # Theme: live Omarchy theme (default) or a named preset; passed as a fixed dir.
+    [[ "$theme" =~ ^[a-z0-9-]{1,48}$ ]] || theme=omarchy
+    tdir=""; tname=""
+    if [[ "$theme" == omarchy ]]; then
+      for d in "$HOME/.config/omarchy/current/theme" "$HOME/.local/state/omarchy/current/theme"; do
+        [[ -f "$d/colors.toml" ]] && { tdir="$d"; tname="$(head -c 48 "$(dirname "$d")/theme.name" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"; break; }
+      done
+    else
+      for d in "$(dirname "$0")/../themes/$theme" "$HOME/.local/share/omarchy/themes/$theme" "/usr/share/omarchy/themes/$theme"; do
+        [[ -f "$d/colors.toml" ]] && { tdir="$(cd "$d" && pwd)"; tname="$theme"; break; }
+      done
+    fi
+    [[ -n "$tdir" ]] && args+=("-themedir=$tdir" "-themename=${tname:-omarchy}")
     # Pick the target monitor (auto = highest refresh rate) and focus it so the new
     # window, and its fullscreen mode, land there. Scoped to this launch only; no
     # Hyprland config is changed.
@@ -74,6 +93,28 @@ case "$cmd" in
     setsid bash -c 'echo $$ > "$0"; exec "$@"' "$pidfile" "$app" "${args[@]}" >"$logfile" 2>&1 </dev/null &
     disown
     echo "$runid"
+    ;;
+  summary)
+    command -v jq >/dev/null || { echo '{"error":"jq missing"}'; exit 0; }
+    mapfile -t files < <(command ls -t "$results"/*.json 2>/dev/null | grep -v '/progress.json$' | head -8)
+    if (( ${#files[@]} == 0 )); then echo '{"history":[]}'; exit 0; fi
+    for f in "${files[@]}"; do
+      [[ $(stat -c %s "$f") -le 262144 ]] && jq -c --arg id "$(basename "$f" .json)" '{runId:($id|.[0:48]),
+        date:((.startedAt // "")|tostring|.[0:19]), score:(.scores.gpu // null),
+        avgFps:((.tests[0].avgFps // null)|if .==null then null else (.*10|round/10) end),
+        p1LowFps:((.tests[0].p1LowFps // null)|if .==null then null else (.*10|round/10) end),
+        monitor:((.env.monitor // "")|tostring|.[0:32]), refreshHz:((.env.refreshHz // null)|if .==null then null else round end),
+        res:((.settings.res // "")|tostring|.[0:16]), theme:((.env.theme // .settings.theme // "")|tostring|.[0:48])}' "$f" 2>/dev/null
+    done | jq -cs '{history: .}'
+    ;;
+  monitors)
+    { command -v hyprctl >/dev/null && command -v jq >/dev/null; } || { echo '[]'; exit 0; }
+    hyprctl monitors -j 2>/dev/null | jq -c '[.[] | {name:(.name|.[0:32]), hz:(.refreshRate|round), w:.width, h:.height}] | .[0:8]' || echo '[]'
+    ;;
+  themes)
+    # Bundled presets plus a few installed Omarchy themes, names only.
+    { command ls "$(dirname "$0")/../themes"; for t in hackerman retro-82 tokyo-night catppuccin; do [[ -f /usr/share/omarchy/themes/$t/colors.toml ]] && echo "$t"; done; } \
+      | grep -E '^[a-z0-9-]{1,48}$' | awk '!s[$0]++' | head -12 | jq -Rsc 'split("\n")|map(select(.!=""))'
     ;;
   stop)
     pid="$(running_pid)" || { echo "not running"; exit 0; }

@@ -14,4 +14,6 @@ public:
 	UPROPERTY() TObjectPtr<class UFont> MonoFont;
 private:
 	void Line(const FString& S, float X, float Y, const FLinearColor& C, float Scale);
+	void Brackets(float X, float Y, float W, float H, float L, const FLinearColor& C);
+	void Rule(float X, float Y, float W, const FLinearColor& C);
 };

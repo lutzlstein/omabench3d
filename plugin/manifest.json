@@ -2,19 +2,19 @@
   "schemaVersion": 1,
   "id": "io.github.lutzlstein.omabench",
   "name": "OmaBench",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Cory Blische",
   "license": "MIT",
-  "description": "Launch the OmaBench UE5 GPU benchmark from the bar and see progress and your last score.",
+  "description": "Run the OmaBench UE5 GPU benchmark from a terminal-style panel: pick tests and settings, watch progress, see results and history.",
   "kinds": [
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
+    "barWidget": "ui/BarWidget.qml"
   },
   "barWidget": {
     "displayName": "OmaBench",
-    "description": "Start/stop the OmaBench GPU benchmark; shows progress and last score",
+    "description": "Benchmark panel: tests, config, run/abort with progress, results history",
     "category": "Developer Tools",
     "allowMultiple": false,
     "defaultSection": "right",
@@ -25,7 +25,10 @@
       "passes": 1,
       "fullscreen": true,
       "quick": false,
-      "monitor": "auto"
+      "monitor": "auto",
+      "pixel": "auto",
+      "hud": true,
+      "theme": "omarchy"
     },
     "schema": [
       {
@@ -81,6 +84,33 @@
         "type": "boolean",
         "label": "Quick preset",
         "defaultValue": false
+      },
+      {
+        "key": "pixel",
+        "type": "enum",
+        "label": "Pixel size",
+        "defaultValue": "auto",
+        "options": [
+          "auto",
+          "0",
+          "2",
+          "4",
+          "8"
+        ],
+        "description": "Post-process pixelation (0 = off)."
+      },
+      {
+        "key": "hud",
+        "type": "boolean",
+        "label": "HUD",
+        "defaultValue": true
+      },
+      {
+        "key": "theme",
+        "type": "string",
+        "label": "Theme",
+        "defaultValue": "omarchy",
+        "description": "omarchy = match current Omarchy theme, or a preset name (maine-autumn-sunset, hackerman, retro-82, tokyo-night, catppuccin)."
       }
     ]
   }

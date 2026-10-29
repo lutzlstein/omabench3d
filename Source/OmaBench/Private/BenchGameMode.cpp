@@ -114,7 +114,14 @@ void ABenchGameMode::LoadPalette()
 	Palette.Add(TEXT("bright_magenta"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("#ff9933"))));
 	Palette.Add(TEXT("muted"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("#2f6b3f"))));
 	const FString Home = FPlatformMisc::GetEnvironmentVariable(TEXT("HOME"));
-	const FString Cands[] = { Home / TEXT(".config/omarchy/current/theme"), Home / TEXT(".local/state/omarchy/current/theme") };
+	// -themedir=PATH (dir holding colors.toml) and -themename=NAME let the launcher pick
+	// a preset or the live Omarchy theme explicitly. Cosmetic only: same GPU work.
+	FString ThemeDirArg, ThemeNameArg;
+	FParse::Value(FCommandLine::Get(), TEXT("-themedir="), ThemeDirArg);
+	FParse::Value(FCommandLine::Get(), TEXT("-themename="), ThemeNameArg);
+	TArray<FString> Cands;
+	if (!ThemeDirArg.IsEmpty()) Cands.Add(ThemeDirArg);
+	Cands.Add(Home / TEXT(".config/omarchy/current/theme")); Cands.Add(Home / TEXT(".local/state/omarchy/current/theme"));
 	for (const FString& Dir : Cands)
 	{
 		TArray<FString> Lines;
@@ -127,6 +134,7 @@ void ABenchGameMode::LoadPalette()
 		}
 		FString Name; if (FFileHelper::LoadFileToString(Name, *(FPaths::GetPath(Dir) / TEXT("theme.name")))) ThemeName = Name.TrimStartAndEnd().Left(48);
 		else ThemeName = TEXT("omarchy");
+		if (!ThemeNameArg.IsEmpty()) ThemeName = ThemeNameArg.Left(48);
 		break;
 	}
 	UE_LOG(LogOmaBench, Log, TEXT("Palette: %s (%d colors)"), *ThemeName, Palette.Num());
@@ -428,6 +436,7 @@ void ABenchGameMode::FinishRun()
 	Env->SetStringField(TEXT("monitor"), MonitorName.IsEmpty() ? TEXT("unknown") : MonitorName.Left(32));
 	Env->SetNumberField(TEXT("refreshHz"), FCString::Atod(*MonitorHz));
 	Env->SetStringField(TEXT("rhi"), GDynamicRHI ? FString(GDynamicRHI->GetName()) : TEXT("unknown"));
+	Env->SetStringField(TEXT("theme"), ThemeName);
 	Root->SetObjectField(TEXT("env"), Env);
 	TSharedRef<FJsonObject> Set = MakeShared<FJsonObject>();
 	Set->SetStringField(TEXT("res"), FString::Printf(TEXT("%dx%d"), ResX, ResY)); Set->SetNumberField(TEXT("passes"), Passes);

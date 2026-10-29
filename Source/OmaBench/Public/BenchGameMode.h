@@ -40,6 +40,8 @@ public:
 	FString GetThemeName() const { return ThemeName; }
 	int32 GetPixelSize() const { return bNoPostFx ? 0 : PixelSize; }
 	bool HudEnabled() const { return !bNoHud; }
+	FString GetRunId() const { return RunId; }
+	FString GetMonitorTag() const { return MonitorName.IsEmpty() ? FString(TEXT("AUTO")) : MonitorName + TEXT(" ") + MonitorHz + TEXT("HZ"); }
 
 private:
 	void ParseArgs();
