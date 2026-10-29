@@ -5,6 +5,12 @@ UE5 GPU benchmark (T1 City Night, T2 Skyline, T3 Downpour) plus an Omarchy shell
 The UE project/module keep the internal name `OmaBench` (packaged launcher `Packaged/Linux/OmaBench.sh`).
 
 
+![omabench3d: T3 Downpour running windowed next to the panel on an Omarchy desktop](docs/screenshots/desktop-panel-downpour.png)
+
+| T1 City Night | T2 Skyline (rooftop) | T2 Skyline (wide) |
+|---|---|---|
+| ![T1 City Night](docs/screenshots/city-night.png) | ![T2 Skyline rooftop](docs/screenshots/skyline-rooftop.png) | ![T2 Skyline wide](docs/screenshots/skyline-wide.png) |
+
 ## Install (Omarchy 4)
 
 Needs a Vulkan GPU driver (stock Omarchy ships `vulkan-icd-loader` + the NVIDIA/AMD/Intel ICD) and `curl`, `zstd`, `jq`
