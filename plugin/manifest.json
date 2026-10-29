@@ -10,7 +10,7 @@
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "ui2/OmaBenchWidget.qml"
+    "barWidget": "ui3/OmaBenchWidget.qml"
   },
   "barWidget": {
     "displayName": "OmaBench",

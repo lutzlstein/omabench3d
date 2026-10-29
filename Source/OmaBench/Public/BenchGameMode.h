@@ -37,6 +37,7 @@ public:
 	UPROPERTY() TObjectPtr<UMaterialInterface> HoloMaterial;
 	UPROPERTY() TArray<TObjectPtr<AActor>> T1Actors;
 	UPROPERTY() TArray<TObjectPtr<AActor>> T2Actors;
+	UPROPERTY() TArray<TObjectPtr<AActor>> T3Actors;
 
 	// Read-only state for the HUD.
 	EBenchPhase GetPhase() const { return Phase; }
@@ -46,7 +47,7 @@ public:
 	FString GetTestName() const { return TestName(GetTestId()); }
 	int32 GetTestIndex() const { return CurrentTest; }
 	int32 GetTestCount() const { return TestIds.Num(); }
-	static FString TestName(const FString& Id) { return Id == TEXT("T2") ? FString(TEXT("Skyline")) : FString(TEXT("City Night")); }
+	static FString TestName(const FString& Id) { return Id == TEXT("T2") ? FString(TEXT("Skyline")) : Id == TEXT("T3") ? FString(TEXT("Downpour")) : FString(TEXT("City Night")); }
 	int32 GetPass() const { return FMath::Min(CurrentPass + 1, Passes); }
 	int32 GetPasses() const { return Passes; }
 	double GetLiveFps() const { return LiveFps; }
@@ -68,6 +69,16 @@ private:
 	struct FCarLane { FVector Origin; FVector Dir; float Speed; float Len; float Phase; };
 	void BuildSkyline();
 	void UpdateSkyline(double T);
+	void BuildDownpour();
+	void UpdateDownpour(double T);
+	void SetDownpourActive(bool bOn);
+	UPROPERTY() TArray<TObjectPtr<class UNiagaraComponent>> DownpourFx;
+	UPROPERTY() TObjectPtr<AActor> RainHost;
+	struct FDrone { TObjectPtr<AActor> Actor; TObjectPtr<class USpotLightComponent> Search; TObjectPtr<class UPointLightComponent> NavL, NavR; int32 Index; };
+	TArray<FDrone> Drones;   // actors are also held (GC-safe) via T3Actors
+	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> FailSign;
+	UPROPERTY() TObjectPtr<class UPointLightComponent> FailLight;
+	FLinearColor FailColor = FLinearColor::White; float FailBase = 0; FVector SparkPos = FVector::ZeroVector;
 	TMap<FIntPoint, float> CellTop;            // top Z of each city tower cell (recorded by BuildScene, no RNG use)
 	FVector RoofCentre = FVector::ZeroVector; float RoofTop = 0;
 	UPROPERTY() TObjectPtr<AActor> Hero;

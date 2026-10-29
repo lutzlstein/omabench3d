@@ -31,11 +31,11 @@ Panel {
   readonly property string theme: String(setting("theme", "omarchy"))
   readonly property bool sysmon: setting("sysmon", true) !== false
 
-  // Data-driven test catalogue: add T3 here when the app ships it. Multi-select runs in order; GPU score = geomean.
+  // Data-driven test catalogue: T1–T3 ship today. Multi-select runs in order; GPU score = geomean.
   readonly property var testCatalog: [
     { id: "T1", name: "City Night", detail: "raster · lumen · rain", available: true },
     { id: "T2", name: "Skyline", detail: "hw rt · reflections · rt shadows", available: true },
-    { id: "T3", name: "CPU Sim", detail: "coming soon", available: false }
+    { id: "T3", name: "Downpour", detail: "gpu particles · niagara · smoke", available: true }
   ]
 
   readonly property string ctl: String(Qt.resolvedUrl("../bin/omabench-ctl")).replace(/^file:\/\//, "")
@@ -55,7 +55,7 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, ui2/fonts/OFL.txt), loaded from the plugin folder only.
+  // Bitcount Prop Single (OFL, ui3/fonts/OFL.txt), loaded from the plugin folder only.
   FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)

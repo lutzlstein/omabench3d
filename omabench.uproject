@@ -8,6 +8,11 @@
       "Name": "OmaBench",
       "Type": "Runtime",
       "LoadingPhase": "Default"
+    },
+    {
+      "Name": "OmaBenchEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
     }
   ],
   "TargetPlatforms": [
@@ -20,6 +25,10 @@
     },
     {
       "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    },
+    {
+      "Name": "Niagara",
       "Enabled": true
     }
   ]

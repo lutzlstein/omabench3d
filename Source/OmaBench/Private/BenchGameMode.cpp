@@ -111,8 +111,8 @@ void ABenchGameMode::ParseArgs()
 	FString Tests; FParse::Value(Cmd, TEXT("-tests="), Tests, /*bShouldStopOnSeparator*/ false);
 	{
 		TArray<FString> Parts; Tests.ToUpper().ParseIntoArray(Parts, TEXT(","));
-		for (const FString& T : Parts) if ((T == TEXT("T1") || T == TEXT("T2")) && !TestIds.Contains(T)) TestIds.Add(T);
-		else if (!T.IsEmpty() && T != TEXT("T1") && T != TEXT("T2")) UE_LOG(LogOmaBench, Warning, TEXT("Unknown/unimplemented test %s skipped."), *T);
+		for (const FString& T : Parts) if ((T == TEXT("T1") || T == TEXT("T2") || T == TEXT("T3")) && !TestIds.Contains(T)) TestIds.Add(T);
+		else if (!T.IsEmpty() && T != TEXT("T1") && T != TEXT("T2") && T != TEXT("T3")) UE_LOG(LogOmaBench, Warning, TEXT("Unknown/unimplemented test %s skipped."), *T);
 		if (TestIds.IsEmpty()) TestIds.Add(TEXT("T1"));
 	}
 	const FString Dir = FPaths::Combine(FPlatformMisc::GetEnvironmentVariable(TEXT("HOME")), TEXT(".local/share/omabench/results"));
@@ -512,10 +512,12 @@ void ABenchGameMode::ActivateTest(int32 Index)
 	// T2 Skyline reuses the City Night city as its surroundings; only T1's placeholder cube traffic is swapped out.
 	for (AActor* A : T1Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T1") && Cars.Contains(A));
 	for (AActor* A : T2Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T2"));
+	for (AActor* A : T3Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T3"));
+	SetDownpourActive(Id == TEXT("T3"));
 	if (RtConfigs.Num() <= Index) RtConfigs.SetNum(Index + 1);
 	RtConfigs[Index] = ApplyRtConfig(Id);
 	PathTime = 0;
-	if (Id == TEXT("T2")) UpdateSkyline(0); else UpdateCamera(0);
+	if (Id == TEXT("T2")) UpdateSkyline(0); else if (Id == TEXT("T3")) UpdateDownpour(0); else UpdateCamera(0);
 }
 
 void ABenchGameMode::BeginPlay()
@@ -534,6 +536,12 @@ void ABenchGameMode::BeginPlay()
 		{
 			BuildSkyline();
 			for (AActor* A : Snap()) if (!Mid.Contains(A)) T2Actors.Add(A);
+		}
+		if (TestIds.Contains(TEXT("T3")))
+		{
+			TSet<AActor*> Pre = Snap();
+			BuildDownpour();
+			for (AActor* A : Snap()) if (!Pre.Contains(A)) T3Actors.Add(A);
 		}
 		ActivateTest(0);
 	}
@@ -599,6 +607,7 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	if (Phase == EBenchPhase::Init) { if (++InitFrames > 5) { Phase = EBenchPhase::Warmup; PhaseTime = 0; } return; }
 	TotalElapsed += Dt; PhaseTime += Dt; PathTime += Dt;
 	if (GetTestId() == TEXT("T2")) UpdateSkyline(FMath::Fmod(PathTime, 60.0));
+	else if (GetTestId() == TEXT("T3")) UpdateDownpour(FMath::Fmod(PathTime, 60.0));
 	else { UpdateCamera(FMath::Fmod(PathTime, 60.0)); UpdateCars(PathTime); }
 	if (Phase == EBenchPhase::Warmup)
 	{
