@@ -83,7 +83,7 @@ void ABenchHUD::DrawHUD()
 			TEXT("TYRELL-OMABENCH ESPER  v0.2  // LUTZLSTEIN SYSTEMS 2019-2026"),
 			FString::Printf(TEXT("UE 5.8 :: VULKAN :: PALETTE %s"), *GM->GetThemeName().ToUpper()),
 			FString::Printf(TEXT("GPU0 ... %s  [OK]"), *GRHIAdapterName.ToUpper()),
-			FString::Printf(TEXT("SUBJECT %s ......... [LOCKED]"), *Serial),
+			FString::Printf(TEXT("SCENE T1 :: CITY NIGHT // %s [LOCKED]"), *Serial),
 			TEXT("VOIGHT-KAMPFF CALIBRATION .......... [OK]"),
 			TEXT("> ENHANCE"),
 		};
@@ -100,7 +100,7 @@ void ABenchHUD::DrawHUD()
 	// Header strip
 	Tile(Canvas, X - 12 * Sc, 26 * Sc, 600 * Sc, LH * 2.4f, Back);
 	L(Serial, X, 34 * Sc, Am);
-	L(FString::Printf(TEXT("NIGHT CITY // %s // %s"), bWarm ? TEXT("CALIBRATE") : TEXT("SCAN"), *GM->GetMonitorTag()), X, 34 * Sc + LH, A(Te, 0.85f), 0.8f);
+	L(FString::Printf(TEXT("CITY NIGHT // %s // %s"), bWarm ? TEXT("CALIBRATE") : TEXT("SCAN"), *GM->GetMonitorTag()), X, 34 * Sc + LH, A(Te, 0.85f), 0.8f);
 	// Forensic telemetry column, top-right, label/value pairs.
 	const float px = W - 380 * Sc, py = 34 * Sc, pw = 320 * Sc;
 	Tile(Canvas, px - 12 * Sc, py - 10 * Sc, pw + 4 * Sc, LH * 5.6f, Back);

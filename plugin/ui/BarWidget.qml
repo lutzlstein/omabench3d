@@ -32,7 +32,7 @@ Panel {
 
   // Data-driven test catalogue: add T2/T3 here when the app ships them.
   readonly property var testCatalog: [
-    { id: "T1", name: "Night City", detail: "raster · lumen · rain", available: true },
+    { id: "T1", name: "City Night", detail: "raster · lumen · rain", available: true },
     { id: "T2", name: "Ray Tracing", detail: "coming soon", available: false },
     { id: "T3", name: "CPU Sim", detail: "coming soon", available: false }
   ]

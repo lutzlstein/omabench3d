@@ -27,6 +27,23 @@ running_pid() {
 }
 
 cmd="${1:-status}"
+# Poll (<=15 s) for the OmaBench client, then float/resize/centre that one window.
+float_window() {
+  local res="$1" mon="$2" w h addr="" i mj mw mh
+  w="${res%x*}"; h="${res#*x}"
+  for i in $(seq 1 60); do
+    addr="$(hyprctl clients -j 2>/dev/null | jq -r '[.[] | select((.class|test("omabench";"i")) or (.title|test("^OmaBench";"i")))][0].address // empty')"
+    [[ -n "$addr" ]] && break; sleep 0.25
+  done
+  [[ -n "$addr" ]] || return 0
+  mj="$(hyprctl monitors -j 2>/dev/null | jq -c --arg m "$mon" '[.[] | select(.name == $m or $m == "")][0]')"
+  mw="$(jq -r '.width // 0' <<<"$mj")"; mh="$(jq -r '.height // 0' <<<"$mj")"
+  (( mw > 0 && w > mw )) && w=$mw; (( mh > 0 && h > mh )) && h=$mh
+  hyprctl dispatch "hl.dsp.window.float({ action = \"enable\", window = \"address:$addr\" })"
+  hyprctl dispatch "hl.dsp.window.resize({ x = $w, y = $h, window = \"address:$addr\" })"
+  hyprctl dispatch "hl.dsp.window.center({ window = \"address:$addr\" })"
+}
+
 case "$cmd" in
   status)
     app="$(expand "${2:-}")"
@@ -92,6 +109,13 @@ case "$cmd" in
     # New session => own process group, detached from the shell.
     setsid bash -c 'echo $$ > "$0"; exec "$@"' "$pidfile" "$app" "${args[@]}" >"$logfile" 2>&1 </dev/null &
     disown
+    # Windowed: float, size and centre the OmaBench window on the target monitor once it
+    # maps. Runtime dispatches on that one window only; Hyprland config is not touched.
+    if [[ "$fs" != 1 ]] && command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+      wres="$(printf '%s\n' "${args[@]}" | sed -n 's/^-res=//p' | tail -1)"
+      ( float_window "${wres:-1920x1080}" "${mon:-}" ) >/dev/null 2>&1 </dev/null &
+      disown
+    fi
     echo "$runid"
     ;;
   summary)

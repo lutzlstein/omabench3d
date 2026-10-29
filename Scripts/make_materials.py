@@ -90,6 +90,14 @@ L.recompile_material(m)
 # wrapped inside a box that follows the camera, so it costs a single instanced draw and is fully deterministic.
 m = fresh("M_Rain")
 m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+# Additive streaks write no velocity, so TSR history rejected them whenever the camera moved
+# (rain only showed while the camera was slow at start/end). Render after motion blur/TSR instead.
+for k, v in (("translucency_pass", unreal.MaterialTranslucencyPass.MTP_AFTER_MOTION_BLUR), ("enable_responsive_aa", True),
+             # Per-instance GPU culling uses the undisplaced streak bounds (a few cm). The WPO drops
+             # streaks up to BoxHeight, so without this most of them were culled as the camera moved.
+             ("max_world_position_offset_displacement", 4200.0)):
+    try: m.set_editor_property(k, v)
+    except Exception as e: unreal.log_warning(f"M_Rain {k}: {e}")
 m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
 m.set_editor_property("used_with_instanced_static_meshes", True)
 t = L.create_material_expression(m, unreal.MaterialExpressionTime, -900, 0)

@@ -140,9 +140,36 @@ void ABenchGameMode::LoadPalette()
 	UE_LOG(LogOmaBench, Log, TEXT("Palette: %s (%d colors)"), *ThemeName, Palette.Num());
 }
 
+// Camera route waypoints on the street grid (x = k*5000 avenues, y = k*6000 streets).
+static const FVector2D GRoute[] = { {0,-30000}, {0,-12000}, {10000,-12000}, {10000,12000}, {-10000,12000}, {-10000,30000}, {0,30000}, {0,42000} };
+// Distance from P to the route polyline; OutQ = closest point on it.
+static float RouteDist(const FVector2D& P, FVector2D& OutQ)
+{
+	float Best = FLT_MAX;
+	for (int32 i = 1; i < UE_ARRAY_COUNT(GRoute); ++i)
+	{
+		const FVector2D A = GRoute[i-1], AB = GRoute[i] - A;
+		const float t = FMath::Clamp(FVector2D::DotProduct(P - A, AB) / AB.SizeSquared(), 0.f, 1.f);
+		const FVector2D Q = A + AB * t; const float D = FVector2D::Distance(P, Q);
+		if (D < Best) { Best = D; OutQ = Q; }
+	}
+	return Best;
+}
+static float RouteLength() { float L = 0; for (int32 i = 1; i < UE_ARRAY_COUNT(GRoute); ++i) L += FVector2D::Distance(GRoute[i-1], GRoute[i]); return L; }
+static FVector2D RoutePoint(float D, FVector2D* Dir = nullptr)
+{
+	for (int32 i = 1; i < UE_ARRAY_COUNT(GRoute); ++i)
+	{
+		const float L = FVector2D::Distance(GRoute[i-1], GRoute[i]);
+		if (D <= L || i == UE_ARRAY_COUNT(GRoute) - 1) { if (Dir) *Dir = (GRoute[i] - GRoute[i-1]).GetSafeNormal(); return GRoute[i-1] + (GRoute[i] - GRoute[i-1]) * FMath::Clamp(D / L, 0.f, 1.f); }
+		D -= L;
+	}
+	return GRoute[0];
+}
+
 void ABenchGameMode::BuildScene()
 {
-	// Night megacity. Everything comes from one seeded RNG, so the scene is identical every run.
+	// City Night megacity. Everything comes from one seeded RNG, so the scene is identical every run.
 	UWorld* W = GetWorld();
 	FRandomStream Rng(2077);
 	FActorSpawnParameters P; P.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -177,7 +204,9 @@ void ABenchGameMode::BuildScene()
 		const int32 GX = X - N/2, GY = Y - N/2;
 		const FVector Base(GX * Cell, GY * Cell, 0);
 		const bool bAvenue = FMath::Abs(GX) <= 1;           // the canyon the camera flies through
-		const bool bStreet = bAvenue || (GX % 5 == 0) || (GY % 6 == 0);
+		// Boulevards the camera turns through (3 cells wide, like the avenue).
+		const bool bBoulevard = FMath::Abs(FMath::Abs(GX) - 10) <= 1 || FMath::Abs(GY + 12) <= 1 || FMath::Abs(GY - 12) <= 1 || FMath::Abs(GY - 30) <= 1;
+		const bool bStreet = bAvenue || bBoulevard || (GX % 5 == 0) || (GY % 6 == 0);
 		if (bStreet)
 		{
 			// street clutter: kiosks, parked vans, barriers
@@ -186,6 +215,7 @@ void ABenchGameMode::BuildScene()
 				{ Clutter->AddInstance(FTransform(FRotator(0, Rng.FRandRange(0,180), 0), Base + FVector(Rng.FRandRange(-400,400), Rng.FRandRange(-400,400), 60), FVector(Rng.FRandRange(0.6f,3.f), Rng.FRandRange(0.6f,1.5f), Rng.FRandRange(0.8f,2.f)))); ++Count; }
 			continue;
 		}
+		FVector2D RouteQ; const bool bNearRoute = RouteDist(FVector2D(Base.X, Base.Y), RouteQ) < 2600.f;
 		// Megablock tower: taller near the canyon, stacked setbacks.
 		const float Near = FMath::Clamp(1.f - FMath::Abs(GX) / 30.f, 0.15f, 1.f);
 		const int32 Stack = Rng.RandRange(3, 8); float Z = 0;
@@ -196,16 +226,22 @@ void ABenchGameMode::BuildScene()
 			const float H = Rng.FRandRange(800, 3200) * (0.4f + Near);
 			T->AddInstance(FTransform(FRotator::ZeroRotator, Base + FVector(0,0,Z + H*0.5f), FVector(Wd, Wd * Rng.FRandRange(0.8f,1.f), H/100.f)));
 			// neon billboards on faces, biased toward the canyon side
-			const int32 NS = Rng.RandRange(0, 3);
+			const int32 NS = Rng.RandRange(0, 3) + (bNearRoute ? 1 : 0);
 			for (int32 k = 0; k < NS; ++k)
 			{
-				const float Side = (GX > 0) ? -1.f : 1.f;
+				// Face the camera route if this block borders it (any leg, incl. side streets
+				// after each turn); otherwise face the central avenue as before.
+				const bool bOnX = !bNearRoute || FMath::Abs(RouteQ.X - Base.X) >= FMath::Abs(RouteQ.Y - Base.Y);
+				const float Side = bNearRoute ? (bOnX ? FMath::Sign(RouteQ.X - Base.X) : FMath::Sign(RouteQ.Y - Base.Y)) : ((GX > 0) ? -1.f : 1.f);
 				const bool bFacing = Rng.FRand() < 0.7f;
 				const float Off = Wd * 50.f + 40.f;
-				const FVector Pos = Base + (bFacing ? FVector(Side * Off, Rng.FRandRange(-250,250), 0) : FVector(Rng.FRandRange(-250,250), (Rng.FRand()<0.5f?-1:1) * Off, 0)) + FVector(0,0,Z + Rng.FRandRange(0.15f,0.85f)*H);
-				const FVector Scale = bFacing ? FVector(0.1f, Rng.FRandRange(1.f,4.f), Rng.FRandRange(1.5f,6.f)) : FVector(Rng.FRandRange(1.f,4.f), 0.1f, Rng.FRandRange(0.6f,2.f));
-				Signs[Rng.RandRange(0, 4)]->AddInstance(FTransform(FRotator::ZeroRotator, Pos, Scale)); ++SignCount;
-				if (bFacing && FMath::Abs(GX) <= 4 && Pos.Z < 9000) SignLights.Add(Pos + FVector(Side * 150, 0, 0));
+				const FVector FaceOff = bOnX ? FVector(Side * Off, Rng.FRandRange(-250,250), 0) : FVector(Rng.FRandRange(-250,250), Side * Off, 0);
+				const FVector SideOff = bOnX ? FVector(Rng.FRandRange(-250,250), (Rng.FRand()<0.5f?-1:1) * Off, 0) : FVector((Rng.FRand()<0.5f?-1:1) * Off, Rng.FRandRange(-250,250), 0);
+				const FVector Pos = Base + (bFacing ? FaceOff : SideOff) + FVector(0,0,Z + Rng.FRandRange(0.15f,0.85f)*H);
+				const FVector Flat(Rng.FRandRange(1.f,4.f), 0.1f, Rng.FRandRange(0.6f,2.f)), Tall(0.1f, Rng.FRandRange(1.f,4.f), Rng.FRandRange(1.5f,6.f));
+				const FVector Scale = (bFacing == bOnX) ? Tall : FVector(Flat.X, Flat.Y, Flat.Z);
+				Signs[Rng.RandRange(0, 4)]->AddInstance(FTransform(FRotator::ZeroRotator, Pos, bOnX ? Scale : FVector(Scale.Y, Scale.X, Scale.Z))); ++SignCount;
+				if (bFacing && (FMath::Abs(GX) <= 4 || bNearRoute) && Pos.Z < 9000) SignLights.Add(Pos + (bOnX ? FVector(Side * 150, 0, 0) : FVector(0, Side * 150, 0)));
 			}
 			Z += H; Wd *= Rng.FRandRange(0.72f, 0.95f); ++Count;
 		}
@@ -223,34 +259,50 @@ void ABenchGameMode::BuildScene()
 	AExponentialHeightFog* Fog = W->SpawnActor<AExponentialHeightFog>(AExponentialHeightFog::StaticClass(), FTransform::Identity, P);
 	UExponentialHeightFogComponent* FogC = Fog->GetComponent();
 	// Street-bound haze: dense at ground level, falls off fast so the skyline neon still reads.
-	FogC->SetVolumetricFog(true); FogC->SetFogDensity(0.12f); FogC->SetFogHeightFalloff(0.9f);
-	FogC->SetFogInscatteringColor(Accent * 0.04f); FogC->SetVolumetricFogAlbedo(FColor(225, 215, 235)); FogC->SetVolumetricFogExtinctionScale(2.0f);
+	FogC->SetVolumetricFog(true); FogC->SetFogDensity(0.2f); FogC->SetFogHeightFalloff(1.1f);
+	FogC->SetFogInscatteringColor(Accent * 0.12f); FogC->SetVolumetricFogAlbedo(FColor(225, 215, 235)); FogC->SetVolumetricFogExtinctionScale(3.0f);
 	FogC->SetVolumetricFogScatteringDistribution(0.75f); FogC->SetVolumetricFogDistance(12000.f);
-	FogC->SecondFogData.FogDensity = 0.6f; FogC->SecondFogData.FogHeightFalloff = 3.0f; FogC->SecondFogData.FogHeightOffset = 0.f; // steam layer hugging the street
+	FogC->SecondFogData.FogDensity = 1.1f; FogC->SecondFogData.FogHeightFalloff = 3.5f; FogC->SecondFogData.FogHeightOffset = 0.f; // steam layer hugging the street
 	FogC->MarkRenderStateDirty();
 	// Local steam pockets along the avenue (fixed positions).
 	for (int32 i = 0; i < 14; ++i)
 	{
 		ALocalFogVolume* LF = W->SpawnActor<ALocalFogVolume>(ALocalFogVolume::StaticClass(), FTransform(FRotator::ZeroRotator, FVector(Rng.FRandRange(-900, 900), -45000 + i * 6900, 0), FVector(12, 12, 4)), P);
 		if (ULocalFogVolumeComponent* C = LF ? LF->GetComponentByClass<ULocalFogVolumeComponent>() : nullptr)
-		{ C->SetHeightFogExtinction(1.2f); C->SetHeightFogFalloff(400.f); C->SetRadialFogExtinction(0.f); }
+		{ C->SetHeightFogExtinction(2.0f); C->SetHeightFogFalloff(450.f); C->SetRadialFogExtinction(0.f); }
+	}
+	// Steam pockets along the whole camera route, every 5 km, incl. each side street.
+	for (float D = 2500.f; D < RouteLength(); D += 5000.f)
+	{
+		const FVector2D Q = RoutePoint(D);
+		ALocalFogVolume* LF = W->SpawnActor<ALocalFogVolume>(ALocalFogVolume::StaticClass(), FTransform(FRotator::ZeroRotator, FVector(Q.X + Rng.FRandRange(-500, 500), Q.Y + Rng.FRandRange(-500, 500), 0), FVector(12, 12, 4)), P);
+		if (ULocalFogVolumeComponent* C = LF ? LF->GetComponentByClass<ULocalFogVolumeComponent>() : nullptr)
+		{ C->SetHeightFogExtinction(2.0f); C->SetHeightFogFalloff(450.f); C->SetRadialFogExtinction(0.f); }
 	}
 	// Sign spill lights along the canyon (shadowed) + scattered street lights.
 	int32 NumLights = 0;
-	for (int32 i = 0; i < SignLights.Num() && NumLights < 140; i += 2)
+	for (int32 i = 0; i < SignLights.Num() && NumLights < 200; i += 2)
 	{
 		APointLight* PL = W->SpawnActor<APointLight>(APointLight::StaticClass(), FTransform(SignLights[i]), P);
 		UPointLightComponent* C = Cast<UPointLightComponent>(PL->GetLightComponent());
 		C->SetMobility(EComponentMobility::Movable); C->SetIntensity(Rng.FRandRange(40000, 120000)); C->SetAttenuationRadius(3500);
-		C->SetLightColor(Neon[Rng.RandRange(0, 4)]); C->SetCastShadows(true); C->SetVolumetricScatteringIntensity(3.f); ++NumLights;
+		C->SetLightColor(Neon[Rng.RandRange(0, 4)]); C->SetCastShadows(NumLights < 140); C->SetVolumetricScatteringIntensity(3.f); ++NumLights;
 	}
-	for (int32 L = 0; L < 60; ++L)
+	// Street lights: along the route every ~1.2 km alternating sides, then the old avenue scatter.
+	TArray<FVector> StreetLights;
+	for (float D = 600.f; D < RouteLength(); D += 1200.f)
 	{
-		const FVector Pos(Rng.FRandRange(-1500, 1500), Rng.FRandRange(-50000, 50000), Rng.FRandRange(150, 500));
+		FVector2D Dir; const FVector2D Q = RoutePoint(D, &Dir); const FVector2D Nrm(-Dir.Y, Dir.X);
+		const float Sd = (int32(D / 1200.f) % 2) ? 1.f : -1.f;
+		StreetLights.Add(FVector(Q + Nrm * Sd * Rng.FRandRange(900, 1300), Rng.FRandRange(150, 500)));
+	}
+	for (int32 L = 0; L < 40; ++L) StreetLights.Add(FVector(Rng.FRandRange(-1500, 1500), Rng.FRandRange(-50000, 50000), Rng.FRandRange(150, 500)));
+	for (const FVector& Pos : StreetLights)
+	{
 		APointLight* PL = W->SpawnActor<APointLight>(APointLight::StaticClass(), FTransform(Pos), P);
 		UPointLightComponent* C = Cast<UPointLightComponent>(PL->GetLightComponent());
 		C->SetMobility(EComponentMobility::Movable); C->SetIntensity(30000); C->SetAttenuationRadius(2200);
-		C->SetLightColor(Warm); C->SetCastShadows(true); ++NumLights;
+		C->SetLightColor(Warm); C->SetCastShadows(false); ++NumLights;
 	}
 	// Flying traffic: emissive pods with unshadowed lights on deterministic lanes.
 	UMaterialInstanceDynamic* CarMat[2];
@@ -273,7 +325,7 @@ void ABenchGameMode::BuildScene()
 		Cars.Add(Car); NumLights++;
 	}
 	UpdateCars(0);
-	UE_LOG(LogOmaBench, Log, TEXT("T1 night city: %d building/clutter instances, %d neon signs, %d lights, %d flying cars"), Count, SignCount, NumLights, Cars.Num());
+	UE_LOG(LogOmaBench, Log, TEXT("T1 city night: %d building/clutter instances, %d neon signs, %d lights, %d flying cars"), Count, SignCount, NumLights, Cars.Num());
 	// Retro post: bloom, slight chromatic fringe, vignette, scanline material. Fixed values for repeatability.
 	APostProcessVolume* PPV = W->SpawnActor<APostProcessVolume>(APostProcessVolume::StaticClass(), FTransform::Identity, P);
 	PPV->bUnbound = true; FPostProcessSettings& S = PPV->Settings;
@@ -299,13 +351,20 @@ void ABenchGameMode::BuildScene()
 	if (RainMaterial)
 	{
 		UInstancedStaticMeshComponent* RainC = NewObject<UInstancedStaticMeshComponent>(Camera, TEXT("Rain"));
-		RainC->SetStaticMesh(CubeMesh); RainC->SetMaterial(0, RainMaterial); RainC->SetMobility(EComponentMobility::Movable);
+		RainC->SetStaticMesh(CubeMesh);
+		// The default 0.35-0.55 emissive was quantised to black by the CRT dither (Levels) except
+		// for streaks right in front of the lens; keep it subtle (below the 0.8 bloom threshold), theme tinted.
+		UMaterialInstanceDynamic* RainM = UMaterialInstanceDynamic::Create(RainMaterial, Camera);
+		RainM->SetVectorParameterValue(TEXT("Color"), Pal(TEXT("foreground"), FLinearColor(0.7f,0.8f,1.f)) * 0.06f); // subtle, below bloom threshold
+		RainC->SetMaterial(0, RainM); RainC->SetMobility(EComponentMobility::Movable);
 		RainC->SetupAttachment(Camera->GetRootComponent()); RainC->SetUsingAbsoluteRotation(true);
-		RainC->SetCollisionEnabled(ECollisionEnabled::NoCollision); RainC->SetCastShadow(false); RainC->SetBoundsScale(100.f);
+		RainC->SetCollisionEnabled(ECollisionEnabled::NoCollision); RainC->SetCastShadow(false); RainC->SetBoundsScale(40.f); RainC->bAllowCullDistanceVolume = false;
 		RainC->InstancingRandomSeed = 4242; RainC->RegisterComponent();
 		FRandomStream RR(4242);
-		for (int32 i = 0; i < 9000; ++i)
-			RainC->AddInstance(FTransform(FRotator::ZeroRotator, FVector(RR.FRandRange(-3000, 3000), RR.FRandRange(-3000, 3000), 2000.f), FVector(0.012f, 0.012f, 0.7f)));
+		// Camera-relative 3 km x 3 km box; WPO drops each streak 0..BoxHeight below +2000.
+		for (int32 i = 0; i < 14000; ++i)
+			RainC->AddInstance(FTransform(FRotator::ZeroRotator, FVector(RR.FRandRange(-1500, 1500), RR.FRandRange(-1500, 1500), 2000.f), FVector(0.012f, 0.012f, 1.6f)));
+		RainC->bNeverDistanceCull = true; RainC->SetCullDistances(0, 0); RainC->bUseAsOccluder = false;
 	}
 	UpdateCamera(0);
 }
@@ -320,13 +379,57 @@ void ABenchGameMode::UpdateCars(double T)
 	}
 }
 
+// City-grid flight path: street waypoints with 90-degree corners, each rounded by a
+// circular fillet, sampled once into a dense polyline and walked at constant speed.
+// Streets are at GX%5==0 (x = k*5000) and GY%6==0 (y = k*6000), so every leg stays in a canyon.
+static const TArray<FVector2D>& CityPath(TArray<float>& OutCum)
+{
+	static TArray<FVector2D> Pts; static TArray<float> Cum;
+	if (Pts.Num() == 0)
+	{
+		const FVector2D* W = GRoute; const int32 NW = UE_ARRAY_COUNT(GRoute); const float R = 420.f;
+		Pts.Add(W[0]);
+		for (int32 i = 1; i < NW - 1; ++i)
+		{
+			const FVector2D In = (W[i] - W[i-1]).GetSafeNormal(), Out = (W[i+1] - W[i]).GetSafeNormal();
+			const FVector2D A = W[i] - In * R, B = W[i] + Out * R, C = A + Out * R; // arc centre
+			Pts.Add(A);
+			for (int32 k = 1; k < 12; ++k)
+			{
+				const float t = k / 12.f * HALF_PI;
+				Pts.Add(C - Out * R * FMath::Cos(t) + In * R * FMath::Sin(t));
+			}
+			Pts.Add(B);
+		}
+		Pts.Add(W[NW-1]);
+		Cum.SetNum(Pts.Num()); Cum[0] = 0;
+		for (int32 i = 1; i < Pts.Num(); ++i) Cum[i] = Cum[i-1] + FVector2D::Distance(Pts[i-1], Pts[i]);
+	}
+	OutCum = Cum; return Pts;
+}
+static FVector2D PathAt(float D, FVector2D* Dir = nullptr)
+{
+	TArray<float> Cum; const TArray<FVector2D>& P = CityPath(Cum);
+	D = FMath::Clamp(D, 0.f, Cum.Last());
+	int32 i = 1; while (i < Cum.Num() - 1 && Cum[i] < D) ++i;
+	const float a = (D - Cum[i-1]) / FMath::Max(1.f, Cum[i] - Cum[i-1]);
+	if (Dir) *Dir = (P[i] - P[i-1]).GetSafeNormal();
+	return FMath::Lerp(P[i-1], P[i], a);
+}
+
 void ABenchGameMode::UpdateCamera(double T)
 {
 	if (!Camera) return;
-	// 60 s canyon run down the central avenue: weaving, climbing and diving between megablocks.
-	auto PosAt = [](double t){ const double u = t / 60.0; return FVector(650*FMath::Sin(2*PI*u*3), -42000 + 84000*u, 2200 + 1400*FMath::Sin(2*PI*u*2) + 600*FMath::Sin(2*PI*u*5)); };
-	const FVector Pos = PosAt(T), Ahead = PosAt(T + 1.2) - FVector(0,0,250);
-	FRotator R = (Ahead - Pos).Rotation(); R.Roll = -8.0 * FMath::Cos(2*PI*(T/60.0)*3);
+	// 60 s loop over the street grid (5 corners), deterministic in T.
+	TArray<float> Cum; CityPath(Cum); const float Len = Cum.Last();
+	const double u = FMath::Clamp(T / 60.0, 0.0, 1.0);
+	auto PosAt = [&](double uu){ const FVector2D XY = PathAt(float(uu * Len)); return FVector(XY.X, XY.Y, 1900 + 700*FMath::Sin(2*PI*uu*2) + 300*FMath::Sin(2*PI*uu*5)); };
+	const FVector Pos = PosAt(u);
+	// Look ahead along the path (smooths the corner yaw) and bank with the turn rate.
+	const FVector Ahead = PosAt(FMath::Min(1.0, u + 900.0 / Len)) - FVector(0,0,200);
+	FVector2D D0, D1; PathAt(float(u * Len), &D0); PathAt(float(u * Len) + 700.f, &D1);
+	const float Turn = FMath::Clamp(float(D0.X * D1.Y - D0.Y * D1.X), -1.f, 1.f);
+	FRotator R = (Ahead - Pos).Rotation(); R.Roll = -14.f * Turn;
 	Camera->SetActorLocationAndRotation(Pos, R);
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) if (PC->GetViewTarget() != Camera) PC->SetViewTarget(Camera);
 }
@@ -443,7 +546,7 @@ void ABenchGameMode::FinishRun()
 	Set->SetStringField(TEXT("preset"), Passes == 1 ? TEXT("quick") : TEXT("standard")); Set->SetBoolField(TEXT("fullscreen"), bFullscreen);
 	Set->SetNumberField(TEXT("warmupS"), WarmupS); Set->SetStringField(TEXT("theme"), ThemeName); Set->SetBoolField(TEXT("postFx"), !bNoPostFx); Set->SetNumberField(TEXT("pixel"), bNoPostFx ? 0 : PixelSize); Set->SetBoolField(TEXT("hud"), !bNoHud); Set->SetNumberField(TEXT("durationS"), DurationS);
 	Root->SetObjectField(TEXT("settings"), Set);
-	TSharedRef<FJsonObject> T1 = StatObj(Med); T1->SetStringField(TEXT("id"), TEXT("T1")); T1->SetBoolField(TEXT("skipped"), false);
+	TSharedRef<FJsonObject> T1 = StatObj(Med); T1->SetStringField(TEXT("id"), TEXT("T1")); T1->SetStringField(TEXT("name"), TEXT("City Night")); T1->SetBoolField(TEXT("skipped"), false);
 	TArray<TSharedPtr<FJsonValue>> PassArr; for (auto& S : Stats) PassArr.Add(MakeShared<FJsonValueObject>(StatObj(S)));
 	T1->SetArrayField(TEXT("passes"), PassArr);
 	Root->SetArrayField(TEXT("tests"), { MakeShared<FJsonValueObject>(T1) });
