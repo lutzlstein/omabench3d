@@ -16,6 +16,8 @@ public:
 	ABenchGameMode();
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+	void AbortRun();
 
 	UPROPERTY() TObjectPtr<UStaticMesh> CubeMesh;
 	UPROPERTY() TObjectPtr<UStaticMesh> SphereMesh;
@@ -40,6 +42,8 @@ public:
 	FString GetThemeName() const { return ThemeName; }
 	int32 GetPixelSize() const { return bNoPostFx ? 0 : PixelSize; }
 	bool HudEnabled() const { return !bNoHud; }
+	bool IsAborted() const { return bAborted; }
+	const class FSysMon* GetSysMon() const { return SysMon.Get(); }
 	FString GetRunId() const { return RunId; }
 	FString GetMonitorTag() const { return MonitorName.IsEmpty() ? FString(TEXT("AUTO")) : MonitorName + TEXT(" ") + MonitorHz + TEXT("HZ"); }
 
@@ -54,6 +58,9 @@ private:
 	TArray<FCarLane> Lanes;
 	void WriteProgress(const TCHAR* State);
 	void FinishRun();
+	void FillCommon(const TSharedRef<class FJsonObject>& Root) const;
+	TSharedPtr<class FSysMon> SysMon; TSharedPtr<class IInputProcessor> EscProc;
+	bool bAborted = false, bNoSysmon = false;
 	static bool WriteJsonAtomic(const FString& Path, const TSharedRef<class FJsonObject>& Obj);
 
 	EBenchPhase Phase = EBenchPhase::Init;

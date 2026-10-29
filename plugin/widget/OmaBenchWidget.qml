@@ -29,6 +29,7 @@ Panel {
   readonly property string pixel: String(setting("pixel", "auto"))
   readonly property bool hud: setting("hud", true) !== false
   readonly property string theme: String(setting("theme", "omarchy"))
+  readonly property bool sysmon: setting("sysmon", true) !== false
 
   // Data-driven test catalogue: add T2/T3 here when the app ships them.
   readonly property var testCatalog: [
@@ -43,6 +44,7 @@ Panel {
   property string benchState: "checking"  // checking|missing|idle|starting|running|error
   property var progress: null
   property var lastScore: null
+  property bool lastAborted: false
   property double startRequestedAt: 0
   property var history: []
   property var monitors: []
@@ -53,7 +55,9 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  readonly property string mono: Style.font.family
+  // Bitcount Grid Double (OFL, widget/fonts/OFL.txt), loaded from the plugin folder only.
+  FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountGridDouble-Medium.ttf") }
+  readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
     ? Math.max(0, Math.min(100, Math.round(100 * progress.elapsedS / progress.totalS))) : 0
 
@@ -66,6 +70,7 @@ Panel {
     if (benchState === "error") return "[OMABENCH] ERR"
     if (benchState === "running" && progress && progress.totalS > 0) return "> RUN " + pixelBar(pct, 5) + " " + pct + "%"
     if (running) return "> BOOT_"
+    if (lastAborted) return "[OMABENCH] ABORTED"
     return lastScore !== null ? "[OMABENCH] " + lastScore : "[OMABENCH] _"
   }
 
@@ -98,6 +103,7 @@ Panel {
     r.push({ kind: "opt", key: "monitor", label: "MONITOR", value: monitorLabel(monitor) })
     r.push({ kind: "opt", key: "pixel", label: "PIXEL", value: pixel === "auto" ? "AUTO" : (pixel === "0" ? "OFF" : pixel + "X") })
     r.push({ kind: "opt", key: "hud", label: "HUD", value: hud ? "[X]" : "[ ]" })
+    r.push({ kind: "opt", key: "sysmon", label: "SYSMON", value: sysmon ? "[X]" : "[ ]" })
     r.push({ kind: "opt", key: "theme", label: "THEME", value: theme === "omarchy" ? "MATCH OMARCHY" : theme.toUpperCase() })
     r.push({ kind: "run" })
     r.push({ kind: "open" })
@@ -120,6 +126,7 @@ Panel {
     else if (key === "fullscreen") save({ fullscreen: !fullscreen })
     else if (key === "quick") save({ quick: !quick })
     else if (key === "hud") save({ hud: !hud })
+    else if (key === "sysmon") save({ sysmon: !sysmon })
     else if (key === "monitor") save({ monitor: cycle(monitorOptions, monitor, dir) })
     else if (key === "pixel") save({ pixel: cycle(["auto", "0", "2", "4", "8"], pixel, dir) })
     else if (key === "theme") save({ theme: cycle(themeOptions, theme, dir) })
@@ -151,7 +158,7 @@ Panel {
       benchState = "starting"
       startRequestedAt = Date.now()
       Quickshell.execDetached([ctl, "start", appPath, selectedTests().join(",") || "T1", resolution, String(passes),
-        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor, pixel, hud ? "1" : "0", theme])
+        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor, pixel, hud ? "1" : "0", theme, sysmon ? "1" : "0"])
     }
     pollTimer.restart()
   }
@@ -167,6 +174,7 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: (root.bar && root.bar.vertical) ? (root.running ? "▮" : "▣") : root.label
+    fontFamily: root.mono
     foreground: root.running ? Commons.Color.accent : (root.bar ? root.bar.barForeground : Commons.Color.foreground)
     tooltipText: root.opened ? "" : (root.benchState === "missing"
       ? "OMABENCH :: NOT INSTALLED AT " + root.appPath
@@ -222,7 +230,7 @@ Panel {
           Mono {
             anchors.right: parent.right; anchors.verticalCenter: hdr.verticalCenter
             color: root.running ? root.ac : root.dim
-            text: ({ checking: "BOOT…", missing: "NOT INSTALLED", idle: "READY_", starting: "STARTING…",
+            text: (root.benchState === "idle" && root.lastAborted) ? "ABORTED" : ({ checking: "BOOT…", missing: "NOT INSTALLED", idle: "READY_", starting: "STARTING…",
                      running: "RUNNING", error: "ERROR" })[root.benchState] || root.benchState
           }
         }
@@ -305,7 +313,8 @@ Panel {
           readonly property var h: root.history.length > 0 ? root.history[0] : null
           width: parent.width; wrapMode: Text.Wrap; elide: Text.ElideNone
           text: !h ? "  NO RUNS YET_" :
-            "  SCORE " + (h.score ?? "—") + "   AVG " + (h.avgFps ?? "—") + " FPS   1% " + (h.p1LowFps ?? "—") + "\n"
+            (h.aborted ? "  ABORTED" + (h.abortedAt ? " DURING " + String(h.abortedAt).toUpperCase() : "") + " · NO SCORE\n" :
+            "  SCORE " + (h.score ?? "—") + "   AVG " + (h.avgFps ?? "—") + " FPS   1% " + (h.p1LowFps ?? "—") + "\n")
             + "  " + (h.monitor || "?") + (h.refreshHz ? " " + h.refreshHz + "HZ" : "") + " · " + h.res
             + " · " + root.fmtDate(h.date) + (h.theme ? " · " + h.theme : "")
         }
@@ -318,7 +327,7 @@ Panel {
             readonly property var h: root.history[index + 1]
             width: col.width
             color: root.dim
-            text: "  " + root.fmtDate(h.date) + "  " + String(h.score ?? "—").padStart(6) + "  " + (h.res || "") + "  " + (h.monitor || "")
+            text: "  " + root.fmtDate(h.date) + "  " + String(h.aborted ? "ABORT" : (h.score ?? "—")).padStart(6) + "  " + (h.res || "") + "  " + (h.monitor || "")
           }
         }
 
@@ -356,6 +365,7 @@ Panel {
           const s = JSON.parse(String(text).slice(0, 8192))
           root.progress = s.progress
           root.lastScore = s.lastScore
+          root.lastAborted = s.lastAborted === true
           if (!s.installed) root.benchState = "missing"
           else if (s.running) root.benchState = "running"
           else if (root.benchState === "starting" && Date.now() - root.startRequestedAt < 5000) {}

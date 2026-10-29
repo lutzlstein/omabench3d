@@ -52,19 +52,20 @@ case "$cmd" in
     progress=null
     [[ -f "$results/progress.json" ]] && progress="$(head -c 4096 "$results/progress.json" | tr -d '\n\t')"
     last="$(ls -t "$results"/*.json 2>/dev/null | grep -v '/progress.json$' | head -1)"
-    score=null; runid=""
+    score=null; runid=""; aborted=false
     if [[ -n "$last" ]]; then
       runid="$(basename "$last" .json | tr -cd 'A-Za-z0-9._-')"
       score="$(head -c 65536 "$last" | tr -d '\n\t ' | grep -o '"scores":{"gpu":[0-9]*' | grep -o '[0-9]*$')"
       [[ -z "$score" ]] && score=null
+      head -c 65536 "$last" | tr -d '\n\t ' | grep -q '"aborted":true' && aborted=true
     fi
-    printf '{"installed":%s,"running":%s,"pid":%s,"lastRunId":"%s","lastScore":%s,"progress":%s}\n' \
-      "$installed" "$running" "$pid" "$runid" "$score" "$progress"
+    printf '{"installed":%s,"running":%s,"pid":%s,"lastRunId":"%s","lastScore":%s,"lastAborted":%s,"progress":%s}\n' \
+      "$installed" "$running" "$pid" "$runid" "$score" "$aborted" "$progress"
     ;;
   start)
     app="$(expand "${2:-}")"; tests="${3:-T1}"; res="${4:-native}"; passes="${5:-1}"
     fs="${6:-1}"; quick="${7:-0}"; warm="${8:-}"; dur="${9:-}"; mon="${10:-auto}"
-    pixel="${11:-auto}"; hud="${12:-1}"; theme="${13:-omarchy}"
+    pixel="${11:-auto}"; hud="${12:-1}"; theme="${13:-omarchy}"; sysmon="${14:-1}"
     [[ -x "$app" ]] || { echo "not installed: $app" >&2; exit 3; }
     running_pid >/dev/null && { echo "already running" >&2; exit 4; }
     [[ "$tests" =~ ^[A-Za-z0-9,]{1,64}$ ]] || { echo "bad tests" >&2; exit 2; }
@@ -78,6 +79,7 @@ case "$cmd" in
     [[ "$dur" =~ ^[0-9]{1,4}$ ]] && args+=("-duration=$dur")
     case "$pixel" in auto) ;; 0|2|4|8) args+=("-pixel=$pixel") ;; *) echo "bad pixel" >&2; exit 2 ;; esac
     [[ "$hud" == 0 ]] && args+=(-nohud)
+    [[ "$sysmon" == 0 ]] && args+=(-nosysmon)
     # Theme: live Omarchy theme (default) or a named preset; passed as a fixed dir.
     [[ "$theme" =~ ^[a-z0-9-]{1,48}$ ]] || theme=omarchy
     tdir=""; tname=""
@@ -124,7 +126,7 @@ case "$cmd" in
     if (( ${#files[@]} == 0 )); then echo '{"history":[]}'; exit 0; fi
     for f in "${files[@]}"; do
       [[ $(stat -c %s "$f") -le 262144 ]] && jq -c --arg id "$(basename "$f" .json)" '{runId:($id|.[0:48]),
-        date:((.startedAt // "")|tostring|.[0:19]), score:(.scores.gpu // null),
+        date:((.startedAt // "")|tostring|.[0:19]), score:(.scores.gpu // null), aborted:(.aborted == true), abortedAt:((.abortedAt // "")|tostring|.[0:16]),
         avgFps:((.tests[0].avgFps // null)|if .==null then null else (.*10|round/10) end),
         p1LowFps:((.tests[0].p1LowFps // null)|if .==null then null else (.*10|round/10) end),
         monitor:((.env.monitor // "")|tostring|.[0:32]), refreshHz:((.env.refreshHz // null)|if .==null then null else round end),

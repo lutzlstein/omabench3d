@@ -39,6 +39,25 @@
 #include "Serialization/JsonSerializer.h"
 #include "RHI.h"
 #include "DynamicRHI.h"
+#include "SysMon.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/IInputProcessor.h"
+#include "InputCoreTypes.h"
+
+// Esc pre-processor: sees the key before the viewport, console or any binding, in
+// fullscreen and windowed, regardless of which Slate widget has focus.
+class FEscAbortProcessor : public IInputProcessor
+{
+public:
+	TWeakObjectPtr<ABenchGameMode> GM;
+	virtual void Tick(const float, FSlateApplication&, TSharedRef<ICursor>) override {}
+	virtual bool HandleKeyDownEvent(FSlateApplication&, const FKeyEvent& E) override
+	{
+		if (E.GetKey() == EKeys::Escape) { if (GM.IsValid()) GM->AbortRun(); return true; }
+		return false;
+	}
+	virtual const TCHAR* GetDebugName() const override { return TEXT("OmaBenchEscAbort"); }
+};
 
 DEFINE_LOG_CATEGORY_STATIC(LogOmaBench, Log, All);
 static const TCHAR* GAppVersion = TEXT("0.1.0");
@@ -73,6 +92,7 @@ void ABenchGameMode::ParseArgs()
 	if (FParse::Value(Cmd, TEXT("-res="), Res)) { FString A, B; if (Res.Split(TEXT("x"), &A, &B)) { ResX = FCString::Atoi(*A); ResY = FCString::Atoi(*B); } }
 	bFullscreen = FParse::Param(Cmd, TEXT("fullscreen"));
 	bNoHud = FParse::Param(Cmd, TEXT("nohud"));
+	bNoSysmon = FParse::Param(Cmd, TEXT("nosysmon"));
 	FParse::Value(Cmd, TEXT("-monitor="), MonitorName); FParse::Value(Cmd, TEXT("-refresh="), MonitorHz);
 	bNoPostFx = FParse::Param(Cmd, TEXT("nopostfx"));
 	PixelSize = FMath::Max(1, FMath::RoundToInt(ResY / 360.f));
@@ -441,8 +461,51 @@ void ABenchGameMode::BeginPlay()
 	LoadPalette();
 	ApplyVideoSettings();
 	BuildScene();
+	if (!bNoSysmon) SysMon = MakeShared<FSysMon>();
+	if (FSlateApplication::IsInitialized())
+	{
+		TSharedRef<FEscAbortProcessor> P = MakeShared<FEscAbortProcessor>(); P->GM = this; EscProc = P;
+		FSlateApplication::Get().RegisterInputPreProcessor(EscProc, 0);
+		FSlateApplication::Get().SetAllUserFocusToGameViewport();
+	}
+	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) { PC->SetInputMode(FInputModeGameOnly()); PC->bShowMouseCursor = false; }
 	UE_LOG(LogOmaBench, Log, TEXT("OmaBench %s run %s: passes=%d warmup=%.0fs duration=%.0fs res=%dx%d fullscreen=%d results=%s"),
 		GAppVersion, *RunId, Passes, WarmupS, DurationS, ResX, ResY, bFullscreen, *ResultsPath);
+}
+
+void ABenchGameMode::EndPlay(const EEndPlayReason::Type Reason)
+{
+	if (EscProc.IsValid() && FSlateApplication::IsInitialized()) FSlateApplication::Get().UnregisterInputPreProcessor(EscProc);
+	// Stopped from outside (omabench-ctl stop / SIGTERM) before finishing: record it as aborted too.
+	if (Phase != EBenchPhase::Done && !RunId.IsEmpty()) AbortRun();
+	EscProc.Reset(); SysMon.Reset();
+	Super::EndPlay(Reason);
+}
+
+void ABenchGameMode::AbortRun()
+{
+	if (bExitRequested) return;
+	if (Phase == EBenchPhase::Done)
+	{
+		// Already aborted, or on the results screen: Esc just skips the hold.
+		if (!bAborted) { bExitRequested = true; FPlatformMisc::RequestExitWithStatus(false, ExitCode); }
+		return;
+	}
+	const TCHAR* At = Phase == EBenchPhase::Running ? TEXT("measuring") : (Phase == EBenchPhase::Warmup ? (TotalElapsed < 4.0 ? TEXT("boot") : TEXT("warmup")) : TEXT("boot"));
+	bAborted = true; Phase = EBenchPhase::Done; DoneHold = 0; ExitCode = 2;
+	if (SysMon) SysMon->SetRecording(false);
+	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	FillCommon(Root);
+	Root->SetBoolField(TEXT("aborted"), true); Root->SetStringField(TEXT("abortedAt"), At);
+	Root->SetNumberField(TEXT("elapsedS"), FMath::RoundToDouble(TotalElapsed * 10) / 10);
+	Root->SetArrayField(TEXT("tests"), {});
+	TSharedRef<FJsonObject> Scores = MakeShared<FJsonObject>(); Scores->SetField(TEXT("gpu"), MakeShared<FJsonValueNull>()); Scores->SetField(TEXT("cpu"), MakeShared<FJsonValueNull>());
+	Root->SetObjectField(TEXT("scores"), Scores); Root->SetBoolField(TEXT("stable"), false);
+	WriteJsonAtomic(ResultsPath, Root);
+	WriteProgress(TEXT("aborted"));
+	UE_LOG(LogOmaBench, Display, TEXT("OmaBench aborted by user (Esc) during %s at %.1fs; results=%s exit=2"), At, TotalElapsed, *ResultsPath);
+	ResultLines = { FString::Printf(TEXT("RUN ABORTED DURING %s"), *FString(At).ToUpper()), FString::Printf(TEXT("ELAPSED ........... %.1f S"), TotalElapsed),
+		TEXT("SCORE ............. NONE"), FString::Printf(TEXT("RESULTS -> %s"), *FPaths::GetCleanFilename(ResultsPath)) };
 }
 
 void ABenchGameMode::Tick(float DeltaSeconds)
@@ -454,7 +517,7 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	if (Phase == EBenchPhase::Done)
 	{
 		DoneHold += FApp::GetDeltaTime();
-		if (!bExitRequested && DoneHold >= (bNoHud ? 0.0 : 4.0)) { bExitRequested = true; FPlatformMisc::RequestExitWithStatus(false, ExitCode); }
+		if (!bExitRequested && DoneHold >= (bAborted ? 1.0 : (bNoHud ? 0.0 : 4.0))) { bExitRequested = true; FPlatformMisc::RequestExitWithStatus(false, ExitCode); }
 		return;
 	}
 	if (Phase == EBenchPhase::Init) { if (++InitFrames > 5) { Phase = EBenchPhase::Warmup; PhaseTime = 0; } return; }
@@ -463,7 +526,7 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	UpdateCars(PathTime);
 	if (Phase == EBenchPhase::Warmup)
 	{
-		if (PhaseTime >= WarmupS) { Phase = EBenchPhase::Running; PhaseTime = 0; PathTime = 0; CurrentFrames.Reset(); CurrentFrames.Reserve(100000); }
+		if (PhaseTime >= WarmupS) { if (SysMon) SysMon->SetRecording(true); Phase = EBenchPhase::Running; PhaseTime = 0; PathTime = 0; CurrentFrames.Reset(); CurrentFrames.Reserve(100000); }
 	}
 	else if (Phase == EBenchPhase::Running)
 	{
@@ -511,23 +574,8 @@ static FPassStats Compute(const TArray<float>& F)
 }
 static double R2(double v){ return FMath::RoundToDouble(v * 100) / 100; }
 
-void ABenchGameMode::FinishRun()
+void ABenchGameMode::FillCommon(const TSharedRef<FJsonObject>& Root) const
 {
-	Phase = EBenchPhase::Done;
-	TArray<FPassStats> Stats; for (auto& F : PassFrames) Stats.Add(Compute(F));
-	TArray<int32> Idx; for (int32 i = 0; i < Stats.Num(); ++i) Idx.Add(i);
-	Idx.Sort([&](int32 a, int32 b){ return Stats[a].Score < Stats[b].Score; });
-	const FPassStats& Med = Stats[Idx[Idx.Num()/2]];
-	double MinS = Stats[Idx[0]].Score, MaxS = Stats[Idx.Last()].Score;
-	const bool bStable = Med.Score > 0 && (MaxS - MinS) / Med.Score <= 0.03;
-
-	auto StatObj = [](const FPassStats& S){ TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
-		O->SetNumberField(TEXT("score"), FMath::RoundToDouble(S.Score)); O->SetNumberField(TEXT("avgFps"), R2(S.AvgFps));
-		O->SetNumberField(TEXT("p1LowFps"), R2(S.P1)); O->SetNumberField(TEXT("p01LowFps"), R2(S.P01));
-		O->SetNumberField(TEXT("frameTimeMsAvg"), R2(S.AvgMs)); O->SetNumberField(TEXT("frameTimeMsStd"), R2(S.Std));
-		O->SetNumberField(TEXT("cov"), FMath::RoundToDouble(S.Cov * 10000) / 10000); O->SetNumberField(TEXT("frames"), S.Frames); return O; };
-
-	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetNumberField(TEXT("schema"), 1); Root->SetStringField(TEXT("runId"), RunId);
 	Root->SetStringField(TEXT("appVersion"), GAppVersion); Root->SetStringField(TEXT("engineVersion"), FEngineVersion::Current().ToString(EVersionComponent::Patch));
 	Root->SetStringField(TEXT("startedAt"), StartedAt);
@@ -544,8 +592,44 @@ void ABenchGameMode::FinishRun()
 	TSharedRef<FJsonObject> Set = MakeShared<FJsonObject>();
 	Set->SetStringField(TEXT("res"), FString::Printf(TEXT("%dx%d"), ResX, ResY)); Set->SetNumberField(TEXT("passes"), Passes);
 	Set->SetStringField(TEXT("preset"), Passes == 1 ? TEXT("quick") : TEXT("standard")); Set->SetBoolField(TEXT("fullscreen"), bFullscreen);
-	Set->SetNumberField(TEXT("warmupS"), WarmupS); Set->SetStringField(TEXT("theme"), ThemeName); Set->SetBoolField(TEXT("postFx"), !bNoPostFx); Set->SetNumberField(TEXT("pixel"), bNoPostFx ? 0 : PixelSize); Set->SetBoolField(TEXT("hud"), !bNoHud); Set->SetNumberField(TEXT("durationS"), DurationS);
+	Set->SetNumberField(TEXT("warmupS"), WarmupS); Set->SetStringField(TEXT("theme"), ThemeName); Set->SetBoolField(TEXT("postFx"), !bNoPostFx); Set->SetNumberField(TEXT("pixel"), bNoPostFx ? 0 : PixelSize); Set->SetBoolField(TEXT("hud"), !bNoHud); Set->SetBoolField(TEXT("sysmon"), !bNoSysmon); Set->SetNumberField(TEXT("durationS"), DurationS);
 	Root->SetObjectField(TEXT("settings"), Set);
+}
+
+void ABenchGameMode::FinishRun()
+{
+	Phase = EBenchPhase::Done;
+	if (SysMon) SysMon->SetRecording(false);
+	TArray<FPassStats> Stats; for (auto& F : PassFrames) Stats.Add(Compute(F));
+	TArray<int32> Idx; for (int32 i = 0; i < Stats.Num(); ++i) Idx.Add(i);
+	Idx.Sort([&](int32 a, int32 b){ return Stats[a].Score < Stats[b].Score; });
+	const FPassStats& Med = Stats[Idx[Idx.Num()/2]];
+	double MinS = Stats[Idx[0]].Score, MaxS = Stats[Idx.Last()].Score;
+	const bool bStable = Med.Score > 0 && (MaxS - MinS) / Med.Score <= 0.03;
+
+	auto StatObj = [](const FPassStats& S){ TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetNumberField(TEXT("score"), FMath::RoundToDouble(S.Score)); O->SetNumberField(TEXT("avgFps"), R2(S.AvgFps));
+		O->SetNumberField(TEXT("p1LowFps"), R2(S.P1)); O->SetNumberField(TEXT("p01LowFps"), R2(S.P01));
+		O->SetNumberField(TEXT("frameTimeMsAvg"), R2(S.AvgMs)); O->SetNumberField(TEXT("frameTimeMsStd"), R2(S.Std));
+		O->SetNumberField(TEXT("cov"), FMath::RoundToDouble(S.Cov * 10000) / 10000); O->SetNumberField(TEXT("frames"), S.Frames); return O; };
+
+	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+	FillCommon(Root);
+	Root->SetBoolField(TEXT("aborted"), false);
+	if (SysMon)
+	{
+		const FSysStats St = SysMon->GetStats(); const FSysSnapshot Sn = SysMon->Get();
+		auto M = [](const FSysStat& S, double Mul = 1.0) { TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+			if (S.N) { O->SetNumberField(TEXT("avg"), R2(S.Sum / S.N * Mul)); O->SetNumberField(TEXT("peak"), R2(S.Peak * Mul)); }
+			else { O->SetField(TEXT("avg"), MakeShared<FJsonValueNull>()); O->SetField(TEXT("peak"), MakeShared<FJsonValueNull>()); } return O; };
+		TSharedRef<FJsonObject> G = MakeShared<FJsonObject>(); G->SetStringField(TEXT("source"), Sn.GpuSource.IsEmpty() ? TEXT("none") : Sn.GpuSource);
+		G->SetObjectField(TEXT("utilPct"), M(St.GpuUtil)); G->SetObjectField(TEXT("tempC"), M(St.GpuTemp)); G->SetObjectField(TEXT("clockMHz"), M(St.GpuMHz));
+		G->SetObjectField(TEXT("powerW"), M(St.GpuPower)); G->SetObjectField(TEXT("vramGiB"), M(St.Vram)); if (Sn.VramTotalGiB > 0) G->SetNumberField(TEXT("vramTotalGiB"), R2(Sn.VramTotalGiB));
+		TSharedRef<FJsonObject> Cp = MakeShared<FJsonObject>(); Cp->SetObjectField(TEXT("utilPct"), M(St.CpuUtil)); Cp->SetObjectField(TEXT("tempC"), M(St.CpuTemp)); Cp->SetObjectField(TEXT("clockMHz"), M(St.CpuMHz));
+		TSharedRef<FJsonObject> Sy = MakeShared<FJsonObject>(); Sy->SetNumberField(TEXT("samples"), St.GpuUtil.N > 0 ? St.GpuUtil.N : St.CpuUtil.N); Sy->SetNumberField(TEXT("hz"), 2);
+		Sy->SetObjectField(TEXT("gpu"), G); Sy->SetObjectField(TEXT("cpu"), Cp); Sy->SetObjectField(TEXT("ramGiB"), M(St.Ram)); if (Sn.RamTotalGiB > 0) Sy->SetNumberField(TEXT("ramTotalGiB"), R2(Sn.RamTotalGiB));
+		Root->SetObjectField(TEXT("sysmon"), Sy);
+	}
 	TSharedRef<FJsonObject> T1 = StatObj(Med); T1->SetStringField(TEXT("id"), TEXT("T1")); T1->SetStringField(TEXT("name"), TEXT("City Night")); T1->SetBoolField(TEXT("skipped"), false);
 	TArray<TSharedPtr<FJsonValue>> PassArr; for (auto& S : Stats) PassArr.Add(MakeShared<FJsonValueObject>(StatObj(S)));
 	T1->SetArrayField(TEXT("passes"), PassArr);
