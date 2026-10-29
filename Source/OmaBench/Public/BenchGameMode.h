@@ -23,6 +23,7 @@ public:
 	UPROPERTY() TObjectPtr<UMaterialInterface> TowerMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> SignMaterial;
 	UPROPERTY() TObjectPtr<UMaterialInterface> StreetMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> RainMaterial;
 	UPROPERTY() TArray<TObjectPtr<AActor>> Cars;
 	UPROPERTY() TObjectPtr<UMaterialInterface> CrtMaterial;
 	UPROPERTY() TObjectPtr<ACameraActor> Camera;
@@ -60,7 +61,7 @@ private:
 	double WarmupS = 10.0, DurationS = 60.0;
 	int32 ResX = 2560, ResY = 1440;
 	bool bFullscreen = false;
-	FString ResultsPath, ProgressPath, RunId, StartedAt;
+	FString MonitorName, MonitorHz, ResultsPath, ProgressPath, RunId, StartedAt;
 	bool bExitRequested = false, bNoHud = false, bNoPostFx = false;
 	double LiveFps = 0.0, FpsAccumT = 0.0, DoneHold = 0.0; int32 FpsAccumN = 0; int32 ExitCode = 0; int32 PixelSize = 4;
 	TMap<FString, FLinearColor> Palette; FString ThemeName = TEXT("fallback-phosphor");

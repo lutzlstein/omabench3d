@@ -24,7 +24,8 @@
       "resolution": "native",
       "passes": 1,
       "fullscreen": true,
-      "quick": false
+      "quick": false,
+      "monitor": "auto"
     },
     "schema": [
       {
@@ -52,6 +53,13 @@
           "2560x1440",
           "3840x2160"
         ]
+      },
+      {
+        "key": "monitor",
+        "type": "string",
+        "label": "Monitor",
+        "defaultValue": "auto",
+        "description": "Hyprland output name (e.g. DP-3), or auto for the highest refresh rate."
       },
       {
         "key": "passes",

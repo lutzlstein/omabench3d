@@ -2,7 +2,7 @@
 # omabench-ctl: narrow launcher/status helper for the OmaBench shell plugin.
 # Runs outside the shell process; the QML only ever calls this with argv.
 #   omabench-ctl status <appPath>
-#   omabench-ctl start  <appPath> <tests> <WxH|native> <passes> <fullscreen 0|1> <quick 0|1> [warmupS durationS]
+#   omabench-ctl start  <appPath> <tests> <WxH|native> <passes> <fullscreen 0|1> <quick 0|1> [warmupS durationS [monitor|auto]]
 #   omabench-ctl stop
 set -uo pipefail
 
@@ -43,7 +43,7 @@ case "$cmd" in
     ;;
   start)
     app="$(expand "${2:-}")"; tests="${3:-T1}"; res="${4:-native}"; passes="${5:-1}"
-    fs="${6:-1}"; quick="${7:-0}"; warm="${8:-}"; dur="${9:-}"
+    fs="${6:-1}"; quick="${7:-0}"; warm="${8:-}"; dur="${9:-}"; mon="${10:-auto}"
     [[ -x "$app" ]] || { echo "not installed: $app" >&2; exit 3; }
     running_pid >/dev/null && { echo "already running" >&2; exit 4; }
     [[ "$tests" =~ ^[A-Za-z0-9,]{1,64}$ ]] || { echo "bad tests" >&2; exit 2; }
@@ -55,6 +55,20 @@ case "$cmd" in
     [[ "$quick" == 1 ]] && args+=(-quick)
     [[ "$warm" =~ ^[0-9]{1,3}$ ]] && args+=("-warmup=$warm")
     [[ "$dur" =~ ^[0-9]{1,4}$ ]] && args+=("-duration=$dur")
+    # Pick the target monitor (auto = highest refresh rate) and focus it so the new
+    # window, and its fullscreen mode, land there. Scoped to this launch only; no
+    # Hyprland config is changed.
+    [[ "$mon" =~ ^[A-Za-z0-9._-]{1,32}$ ]] || mon=auto
+    if command -v hyprctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+      mons="$(hyprctl monitors -j 2>/dev/null)"
+      if [[ "$mon" == auto ]]; then mon="$(jq -r 'max_by(.refreshRate) | .name // empty' <<<"$mons")"; fi
+      hz="$(jq -r --arg m "$mon" '.[] | select(.name == $m) | .refreshRate' <<<"$mons" | head -1)"
+      if [[ -n "$hz" ]]; then
+        hyprctl dispatch "hl.dsp.focus({ monitor = \"$mon\" })" >/dev/null 2>&1 || true
+        args+=("-monitor=$mon" "-refresh=$(printf '%.2f' "$hz")")
+        [[ "$res" == native ]] && args+=("-res=$(jq -r --arg m "$mon" '.[] | select(.name == $m) | "\(.width)x\(.height)"' <<<"$mons" | head -1)")
+      fi
+    fi
     mkdir -p "$rundir" "$results"
     # New session => own process group, detached from the shell.
     setsid bash -c 'echo $$ > "$0"; exec "$@"' "$pidfile" "$app" "${args[@]}" >"$logfile" 2>&1 </dev/null &

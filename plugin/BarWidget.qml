@@ -19,6 +19,8 @@ BarWidget {
   readonly property bool fullscreen: setting("fullscreen", true) === true
   readonly property bool quick: setting("quick", false) === true
   readonly property string tests: String(setting("tests", "T1"))
+  // Monitor to run on: "auto" picks the highest-refresh output (DP-3 here).
+  readonly property string monitor: String(setting("monitor", "auto"))
 
   // Test catalogue; a future panel lists these for selection.
   readonly property var testCatalog: [
@@ -62,7 +64,7 @@ BarWidget {
       benchState = "starting"
       startRequestedAt = Date.now()
       Quickshell.execDetached([ctl, "start", appPath, tests, resolution, String(passes),
-        fullscreen ? "1" : "0", quick ? "1" : "0"])
+        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor])
     }
     pollTimer.restart()
   }

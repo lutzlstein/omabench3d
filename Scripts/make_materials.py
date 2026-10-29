@@ -47,7 +47,7 @@ for src, pin in ((wp,"WP"),(nrm,"N"),(rnd,"R"),(win,"Win"),(g,"Glow"),(dens,"Lit
 L.connect_material_property(c, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 L.connect_material_property(vparam(m,"BodyColor",(0.012,0.012,0.018,1),-500,300), "", unreal.MaterialProperty.MP_BASE_COLOR)
 L.connect_material_property(sparam(m,"Metallic",0.7,-500,400), "", unreal.MaterialProperty.MP_METALLIC)
-L.connect_material_property(sparam(m,"Roughness",0.18,-500,500), "", unreal.MaterialProperty.MP_ROUGHNESS)
+L.connect_material_property(sparam(m,"Roughness",0.1,-500,500), "", unreal.MaterialProperty.MP_ROUGHNESS)
 m.set_editor_property("used_with_instanced_static_meshes", True)
 L.recompile_material(m)
 
@@ -73,7 +73,7 @@ float b = frac(sin(dot(i + float2(1,0), float2(127.1, 311.7))) * 43758.5);
 float c = frac(sin(dot(i + float2(0,1), float2(127.1, 311.7))) * 43758.5);
 float d = frac(sin(dot(i + float2(1,1), float2(127.1, 311.7))) * 43758.5);
 float n = lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
-return lerp(0.32, 0.02, smoothstep(0.35, 0.6, n));
+return lerp(0.22, 0.015, smoothstep(0.25, 0.5, n));
 """
 r = custom(m, code, ["WP"], -400, 0)
 r.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1)
@@ -84,6 +84,22 @@ L.connect_material_expressions(wp, "", lane, "WP")
 L.connect_material_property(lane, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 L.connect_material_property(vparam(m,"Base",(0.015,0.015,0.018,1),-400,400), "", unreal.MaterialProperty.MP_BASE_COLOR)
 m.set_editor_property("used_with_instanced_static_meshes", True)
+L.recompile_material(m)
+
+# M_Rain: additive unlit streaks; vertical motion is a world-position offset driven by material Time,
+# wrapped inside a box that follows the camera, so it costs a single instanced draw and is fully deterministic.
+m = fresh("M_Rain")
+m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+m.set_editor_property("used_with_instanced_static_meshes", True)
+t = L.create_material_expression(m, unreal.MaterialExpressionTime, -900, 0)
+rnd = L.create_material_expression(m, unreal.MaterialExpressionPerInstanceRandom, -900, 100)
+sp = sparam(m, "Speed", 900.0, -900, 200)
+hh = sparam(m, "BoxHeight", 4000.0, -900, 300)
+wpo = custom(m, "float d = frac((T * S) / H + R) * H; return float3(-0.06 * d, 0.03 * d, -d);", ["T","R","S","H"], -500, 0)
+for src, pin in ((t,"T"),(rnd,"R"),(sp,"S"),(hh,"H")): L.connect_material_expressions(src, "", wpo, pin)
+L.connect_material_property(wpo, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+L.connect_material_property(vparam(m,"Color",(0.35,0.4,0.55,1),-500,200), "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 L.recompile_material(m)
 
 # PP_CRT: post-only pixelation (point-sampled virtual low-res grid), ordered-dither colour quantisation,

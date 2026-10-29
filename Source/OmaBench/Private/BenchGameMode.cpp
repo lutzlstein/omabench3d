@@ -1,5 +1,8 @@
 #include "BenchGameMode.h"
 #include "BenchHUD.h"
+#include "Engine/LocalFogVolume.h"
+#include "Components/LocalFogVolumeComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/PostProcessVolume.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Camera/CameraActor.h"
@@ -51,9 +54,10 @@ ABenchGameMode::ABenchGameMode()
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Tower(TEXT("/Game/OmaBench/Materials/M_Tower.M_Tower"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Sign(TEXT("/Game/OmaBench/Materials/M_Sign.M_Sign"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Street(TEXT("/Game/OmaBench/Materials/M_Street.M_Street"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Rain(TEXT("/Game/OmaBench/Materials/M_Rain.M_Rain"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Crt(TEXT("/Game/OmaBench/Materials/PP_CRT.PP_CRT"));
 	CubeMesh = Cube.Object; SphereMesh = Sphere.Object; BaseMaterial = Mat.Object;
-	TowerMaterial = Tower.Object; SignMaterial = Sign.Object; StreetMaterial = Street.Object; CrtMaterial = Crt.Object;
+	TowerMaterial = Tower.Object; SignMaterial = Sign.Object; StreetMaterial = Street.Object; RainMaterial = Rain.Object; CrtMaterial = Crt.Object;
 	HUDClass = ABenchHUD::StaticClass();
 }
 
@@ -69,6 +73,7 @@ void ABenchGameMode::ParseArgs()
 	if (FParse::Value(Cmd, TEXT("-res="), Res)) { FString A, B; if (Res.Split(TEXT("x"), &A, &B)) { ResX = FCString::Atoi(*A); ResY = FCString::Atoi(*B); } }
 	bFullscreen = FParse::Param(Cmd, TEXT("fullscreen"));
 	bNoHud = FParse::Param(Cmd, TEXT("nohud"));
+	FParse::Value(Cmd, TEXT("-monitor="), MonitorName); FParse::Value(Cmd, TEXT("-refresh="), MonitorHz);
 	bNoPostFx = FParse::Param(Cmd, TEXT("nopostfx"));
 	PixelSize = FMath::Max(1, FMath::RoundToInt(ResY / 360.f));
 	FParse::Value(Cmd, TEXT("-pixel="), PixelSize); PixelSize = FMath::Clamp(PixelSize, 0, 16);
@@ -209,11 +214,19 @@ void ABenchGameMode::BuildScene()
 	SkyL->GetLightComponent()->SetIntensity(0.4f); SkyL->GetLightComponent()->RecaptureSky();
 	AExponentialHeightFog* Fog = W->SpawnActor<AExponentialHeightFog>(AExponentialHeightFog::StaticClass(), FTransform::Identity, P);
 	UExponentialHeightFogComponent* FogC = Fog->GetComponent();
-	FogC->SetVolumetricFog(true); FogC->SetFogDensity(0.035f); FogC->SetFogHeightFalloff(0.05f);
-	FogC->SetFogInscatteringColor(Accent * 0.05f); FogC->SetVolumetricFogAlbedo(FColor(220, 210, 230)); FogC->SetVolumetricFogExtinctionScale(1.5f);
-	FogC->SetVolumetricFogScatteringDistribution(0.7f);
-	FogC->SecondFogData.FogDensity = 0.25f; FogC->SecondFogData.FogHeightFalloff = 0.6f; FogC->SecondFogData.FogHeightOffset = 0.f; // ground-level steam layer
+	// Street-bound haze: dense at ground level, falls off fast so the skyline neon still reads.
+	FogC->SetVolumetricFog(true); FogC->SetFogDensity(0.12f); FogC->SetFogHeightFalloff(0.9f);
+	FogC->SetFogInscatteringColor(Accent * 0.04f); FogC->SetVolumetricFogAlbedo(FColor(225, 215, 235)); FogC->SetVolumetricFogExtinctionScale(2.0f);
+	FogC->SetVolumetricFogScatteringDistribution(0.75f); FogC->SetVolumetricFogDistance(12000.f);
+	FogC->SecondFogData.FogDensity = 0.6f; FogC->SecondFogData.FogHeightFalloff = 3.0f; FogC->SecondFogData.FogHeightOffset = 0.f; // steam layer hugging the street
 	FogC->MarkRenderStateDirty();
+	// Local steam pockets along the avenue (fixed positions).
+	for (int32 i = 0; i < 14; ++i)
+	{
+		ALocalFogVolume* LF = W->SpawnActor<ALocalFogVolume>(ALocalFogVolume::StaticClass(), FTransform(FRotator::ZeroRotator, FVector(Rng.FRandRange(-900, 900), -45000 + i * 6900, 0), FVector(12, 12, 4)), P);
+		if (ULocalFogVolumeComponent* C = LF ? LF->GetComponentByClass<ULocalFogVolumeComponent>() : nullptr)
+		{ C->SetHeightFogExtinction(1.2f); C->SetHeightFogFalloff(400.f); C->SetRadialFogExtinction(0.f); }
+	}
 	// Sign spill lights along the canyon (shadowed) + scattered street lights.
 	int32 NumLights = 0;
 	for (int32 i = 0; i < SignLights.Num() && NumLights < 140; i += 2)
@@ -274,6 +287,18 @@ void ABenchGameMode::BuildScene()
 	UE_LOG(LogOmaBench, Log, TEXT("PostFX=%d pixel=%d"), !bNoPostFx, PixelSize);
 	Camera = W->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, P);
 	Camera->GetCameraComponent()->SetFieldOfView(80.f); Camera->GetCameraComponent()->bConstrainAspectRatio = false;
+	// Rain: moderate shower of 9000 additive streaks in a 6 km x 6 km x 4 km box that follows the camera (fixed seed).
+	if (RainMaterial)
+	{
+		UInstancedStaticMeshComponent* RainC = NewObject<UInstancedStaticMeshComponent>(Camera, TEXT("Rain"));
+		RainC->SetStaticMesh(CubeMesh); RainC->SetMaterial(0, RainMaterial); RainC->SetMobility(EComponentMobility::Movable);
+		RainC->SetupAttachment(Camera->GetRootComponent()); RainC->SetUsingAbsoluteRotation(true);
+		RainC->SetCollisionEnabled(ECollisionEnabled::NoCollision); RainC->SetCastShadow(false); RainC->SetBoundsScale(100.f);
+		RainC->InstancingRandomSeed = 4242; RainC->RegisterComponent();
+		FRandomStream RR(4242);
+		for (int32 i = 0; i < 9000; ++i)
+			RainC->AddInstance(FTransform(FRotator::ZeroRotator, FVector(RR.FRandRange(-3000, 3000), RR.FRandRange(-3000, 3000), 2000.f), FVector(0.012f, 0.012f, 0.7f)));
+	}
 	UpdateCamera(0);
 }
 
@@ -399,6 +424,9 @@ void ABenchGameMode::FinishRun()
 	Env->SetStringField(TEXT("gpu"), GRHIAdapterName); Env->SetStringField(TEXT("driver"), GRHIAdapterUserDriverVersion);
 	Env->SetStringField(TEXT("kernel"), FPlatformMisc::GetOSVersion()); Env->SetStringField(TEXT("cpu"), FPlatformMisc::GetCPUBrand().TrimStartAndEnd());
 	Env->SetNumberField(TEXT("ramGb"), (double)FPlatformMemory::GetConstants().TotalPhysicalGB);
+	Env->SetBoolField(TEXT("vsync"), IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"))->GetInt() != 0); Env->SetNumberField(TEXT("maxFps"), IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS"))->GetFloat());
+	Env->SetStringField(TEXT("monitor"), MonitorName.IsEmpty() ? TEXT("unknown") : MonitorName.Left(32));
+	Env->SetNumberField(TEXT("refreshHz"), FCString::Atod(*MonitorHz));
 	Env->SetStringField(TEXT("rhi"), GDynamicRHI ? FString(GDynamicRHI->GetName()) : TEXT("unknown"));
 	Root->SetObjectField(TEXT("env"), Env);
 	TSharedRef<FJsonObject> Set = MakeShared<FJsonObject>();
