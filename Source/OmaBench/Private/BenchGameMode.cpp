@@ -43,6 +43,10 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "InputCoreTypes.h"
+#include "EngineUtils.h"
+#include "Engine/PostProcessVolume.h"
+#include "Camera/CameraActor.h"
+#include "Components/InstancedStaticMeshComponent.h"
 
 // Esc pre-processor: sees the key before the viewport, console or any binding, in
 // fullscreen and windowed, regardless of which Slate widget has focus.
@@ -77,6 +81,13 @@ ABenchGameMode::ABenchGameMode()
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Crt(TEXT("/Game/OmaBench/Materials/PP_CRT.PP_CRT"));
 	CubeMesh = Cube.Object; SphereMesh = Sphere.Object; BaseMaterial = Mat.Object;
 	TowerMaterial = Tower.Object; SignMaterial = Sign.Object; StreetMaterial = Street.Object; RainMaterial = Rain.Object; CrtMaterial = Crt.Object;
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cyl(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MChrome(TEXT("/Game/OmaBench/Materials/M_Chrome.M_Chrome"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MFloor(TEXT("/Game/OmaBench/Materials/M_Floor.M_Floor"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MGlass(TEXT("/Game/OmaBench/Materials/M_Glass.M_Glass"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MEmit(TEXT("/Game/OmaBench/Materials/M_Emit.M_Emit"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> MHolo(TEXT("/Game/OmaBench/Materials/M_Holo.M_Holo"));
+	CylinderMesh = Cyl.Object; ChromeMaterial = MChrome.Object; FloorMaterial = MFloor.Object; GlassMaterial = MGlass.Object; EmitMaterial = MEmit.Object; HoloMaterial = MHolo.Object;
 	HUDClass = ABenchHUD::StaticClass();
 }
 
@@ -97,8 +108,13 @@ void ABenchGameMode::ParseArgs()
 	bNoPostFx = FParse::Param(Cmd, TEXT("nopostfx"));
 	PixelSize = FMath::Max(1, FMath::RoundToInt(ResY / 360.f));
 	FParse::Value(Cmd, TEXT("-pixel="), PixelSize); PixelSize = FMath::Clamp(PixelSize, 0, 16);
-	FString Tests; FParse::Value(Cmd, TEXT("-tests="), Tests);
-	if (!Tests.IsEmpty() && !Tests.Contains(TEXT("T1"))) UE_LOG(LogOmaBench, Warning, TEXT("Only T1 is implemented in M1; running T1."));
+	FString Tests; FParse::Value(Cmd, TEXT("-tests="), Tests, /*bShouldStopOnSeparator*/ false);
+	{
+		TArray<FString> Parts; Tests.ToUpper().ParseIntoArray(Parts, TEXT(","));
+		for (const FString& T : Parts) if ((T == TEXT("T1") || T == TEXT("T2")) && !TestIds.Contains(T)) TestIds.Add(T);
+		else if (!T.IsEmpty() && T != TEXT("T1") && T != TEXT("T2")) UE_LOG(LogOmaBench, Warning, TEXT("Unknown/unimplemented test %s skipped."), *T);
+		if (TestIds.IsEmpty()) TestIds.Add(TEXT("T1"));
+	}
 	const FString Dir = FPaths::Combine(FPlatformMisc::GetEnvironmentVariable(TEXT("HOME")), TEXT(".local/share/omabench/results"));
 	if (!FParse::Value(Cmd, TEXT("-runid="), RunId)) RunId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
 	if (!FParse::Value(Cmd, TEXT("-results="), ResultsPath)) ResultsPath = FPaths::Combine(Dir, RunId + TEXT(".json"));
@@ -454,13 +470,73 @@ void ABenchGameMode::UpdateCamera(double T)
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) if (PC->GetViewTarget() != Camera) PC->SetViewTarget(Camera);
 }
 
+// Per-test ray tracing config, applied at runtime when a test activates.
+// T1 City Night keeps the project defaults (HW Lumen GI + reflections, surface-cache lighting,
+// 1 reflection bounce, raster shadow maps). T2 Off-World Hangar turns everything up: hit-lighting
+// reflections, multi-bounce reflections/refraction, translucent front-layer reflections, RT shadows.
+TSharedRef<FJsonObject> ABenchGameMode::ApplyRtConfig(const FString& Id)
+{
+	const bool b2 = Id == TEXT("T2");
+	const TPair<const TCHAR*, const TCHAR*> Cfg[] = {
+		{ TEXT("r.Lumen.HardwareRayTracing"), TEXT("1") },
+		{ TEXT("r.Lumen.HardwareRayTracing.LightingMode"), b2 ? TEXT("2") : TEXT("0") },
+		{ TEXT("r.Lumen.Reflections.HardwareRayTracing"), TEXT("1") },
+		{ TEXT("r.Lumen.Reflections.ScreenTraces"), b2 ? TEXT("0") : TEXT("1") },
+		{ TEXT("r.Lumen.Reflections.MaxRoughnessToTrace"), b2 ? TEXT("0.6") : TEXT("0.4") },
+		{ TEXT("r.Lumen.Reflections.MaxReflectionBounces"), b2 ? TEXT("4") : TEXT("1") },
+		{ TEXT("r.Lumen.Reflections.MaxRefractionBounces"), b2 ? TEXT("2") : TEXT("0") },
+		{ TEXT("r.Lumen.TranslucencyReflections.FrontLayer.Enable"), b2 ? TEXT("1") : TEXT("0") },
+		{ TEXT("r.RayTracing.Shadows"), b2 ? TEXT("1") : TEXT("0") },
+		{ TEXT("r.RayTracing.Shadows.SamplesPerPixel"), b2 ? TEXT("2") : TEXT("1") },
+	};
+	TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+	O->SetStringField(TEXT("profile"), b2 ? TEXT("hwrt-max") : TEXT("hw-lumen-default"));
+	TSharedRef<FJsonObject> Vars = MakeShared<FJsonObject>(); TArray<TSharedPtr<FJsonValue>> Missing;
+	for (const auto& KV : Cfg)
+	{
+		IConsoleVariable* C = IConsoleManager::Get().FindConsoleVariable(KV.Key);
+		if (!C) { Missing.Add(MakeShared<FJsonValueString>(KV.Key)); continue; }
+		C->Set(KV.Value, ECVF_SetByCode);
+		Vars->SetStringField(KV.Key, C->GetString());
+	}
+	O->SetObjectField(TEXT("cvars"), Vars); O->SetArrayField(TEXT("unsupported"), Missing);
+	O->SetBoolField(TEXT("rhiRayTracing"), IsRayTracingEnabled());
+	UE_LOG(LogOmaBench, Display, TEXT("OmaBench %s RT profile applied (%d cvars missing, RHI RT=%d)"), *Id, Missing.Num(), IsRayTracingEnabled() ? 1 : 0);
+	return O;
+}
+
+void ABenchGameMode::ActivateTest(int32 Index)
+{
+	CurrentTest = Index;
+	const FString Id = GetTestId();
+	for (AActor* A : T1Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T1"));
+	for (AActor* A : T2Actors) if (A) A->SetActorHiddenInGame(Id != TEXT("T2"));
+	if (Camera) { TArray<UInstancedStaticMeshComponent*> R; Camera->GetComponents(R); for (auto* C : R) C->SetVisibility(Id == TEXT("T1")); }
+	if (RtConfigs.Num() <= Index) RtConfigs.SetNum(Index + 1);
+	RtConfigs[Index] = ApplyRtConfig(Id);
+	PathTime = 0;
+	if (Id == TEXT("T2")) UpdateHangarCamera(0); else UpdateCamera(0);
+}
+
 void ABenchGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	ParseArgs();
 	LoadPalette();
 	ApplyVideoSettings();
-	BuildScene();
+	{
+		auto Snap = [&](){ TSet<AActor*> S; for (TActorIterator<AActor> It(GetWorld()); It; ++It) S.Add(*It); return S; };
+		TSet<AActor*> Before = Snap();
+		BuildScene();
+		TSet<AActor*> Mid = Snap();
+		for (AActor* A : Mid) if (!Before.Contains(A) && A != Camera && !A->IsA<APostProcessVolume>()) T1Actors.Add(A);
+		if (TestIds.Contains(TEXT("T2")))
+		{
+			BuildHangar();
+			for (AActor* A : Snap()) if (!Mid.Contains(A)) T2Actors.Add(A);
+		}
+		ActivateTest(0);
+	}
 	if (!bNoSysmon) SysMon = MakeShared<FSysMon>();
 	if (FSlateApplication::IsInitialized())
 	{
@@ -522,8 +598,8 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	}
 	if (Phase == EBenchPhase::Init) { if (++InitFrames > 5) { Phase = EBenchPhase::Warmup; PhaseTime = 0; } return; }
 	TotalElapsed += Dt; PhaseTime += Dt; PathTime += Dt;
-	UpdateCamera(FMath::Fmod(PathTime, 60.0));
-	UpdateCars(PathTime);
+	if (GetTestId() == TEXT("T2")) UpdateHangarCamera(FMath::Fmod(PathTime, 60.0));
+	else { UpdateCamera(FMath::Fmod(PathTime, 60.0)); UpdateCars(PathTime); }
 	if (Phase == EBenchPhase::Warmup)
 	{
 		if (PhaseTime >= WarmupS) { if (SysMon) SysMon->SetRecording(true); Phase = EBenchPhase::Running; PhaseTime = 0; PathTime = 0; CurrentFrames.Reset(); CurrentFrames.Reserve(100000); }
@@ -534,7 +610,14 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 		if (PhaseTime >= DurationS)
 		{
 			PassFrames.Add(MoveTemp(CurrentFrames)); CurrentFrames = {};
-			if (++CurrentPass >= Passes) { FinishRun(); return; }
+			if (++CurrentPass >= Passes)
+			{
+				TestPassFrames.Add(MoveTemp(PassFrames)); PassFrames = {};
+				if (CurrentTest + 1 >= TestIds.Num()) { FinishRun(); return; }
+				if (SysMon) SysMon->SetRecording(false);
+				CurrentPass = 0; ActivateTest(CurrentTest + 1);
+				Phase = EBenchPhase::Warmup; PhaseTime = 0; return;
+			}
 			PhaseTime = 0; PathTime = 0; CurrentFrames.Reserve(100000);
 		}
 	}
@@ -553,8 +636,9 @@ void ABenchGameMode::WriteProgress(const TCHAR* State)
 {
 	TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
 	O->SetNumberField(TEXT("schema"), 1); O->SetStringField(TEXT("runId"), RunId); O->SetStringField(TEXT("state"), State);
-	O->SetStringField(TEXT("test"), TEXT("T1")); O->SetNumberField(TEXT("pass"), FMath::Min(CurrentPass + 1, Passes)); O->SetNumberField(TEXT("passes"), Passes);
-	O->SetNumberField(TEXT("elapsedS"), FMath::RoundToDouble(TotalElapsed * 10) / 10); O->SetNumberField(TEXT("totalS"), WarmupS + DurationS * Passes);
+	O->SetStringField(TEXT("test"), GetTestId()); O->SetStringField(TEXT("testName"), GetTestName());
+	O->SetNumberField(TEXT("testIndex"), CurrentTest + 1); O->SetNumberField(TEXT("testCount"), TestIds.Num()); O->SetNumberField(TEXT("pass"), FMath::Min(CurrentPass + 1, Passes)); O->SetNumberField(TEXT("passes"), Passes);
+	O->SetNumberField(TEXT("elapsedS"), FMath::RoundToDouble(TotalElapsed * 10) / 10); O->SetNumberField(TEXT("totalS"), GetTotal());
 	WriteJsonAtomic(ProgressPath, O);
 }
 
@@ -593,6 +677,8 @@ void ABenchGameMode::FillCommon(const TSharedRef<FJsonObject>& Root) const
 	Set->SetStringField(TEXT("res"), FString::Printf(TEXT("%dx%d"), ResX, ResY)); Set->SetNumberField(TEXT("passes"), Passes);
 	Set->SetStringField(TEXT("preset"), Passes == 1 ? TEXT("quick") : TEXT("standard")); Set->SetBoolField(TEXT("fullscreen"), bFullscreen);
 	Set->SetNumberField(TEXT("warmupS"), WarmupS); Set->SetStringField(TEXT("theme"), ThemeName); Set->SetBoolField(TEXT("postFx"), !bNoPostFx); Set->SetNumberField(TEXT("pixel"), bNoPostFx ? 0 : PixelSize); Set->SetBoolField(TEXT("hud"), !bNoHud); Set->SetBoolField(TEXT("sysmon"), !bNoSysmon); Set->SetNumberField(TEXT("durationS"), DurationS);
+	{ TArray<TSharedPtr<FJsonValue>> TA; for (const FString& T : TestIds) TA.Add(MakeShared<FJsonValueString>(T)); Set->SetArrayField(TEXT("tests"), TA); }
+	Set->SetStringField(TEXT("gpuScoreMethod"), TEXT("geomean(test scores); test score = 100*avgFps*clamp(1-cov,0.8,1), median of passes"));
 	Root->SetObjectField(TEXT("settings"), Set);
 }
 
@@ -600,13 +686,6 @@ void ABenchGameMode::FinishRun()
 {
 	Phase = EBenchPhase::Done;
 	if (SysMon) SysMon->SetRecording(false);
-	TArray<FPassStats> Stats; for (auto& F : PassFrames) Stats.Add(Compute(F));
-	TArray<int32> Idx; for (int32 i = 0; i < Stats.Num(); ++i) Idx.Add(i);
-	Idx.Sort([&](int32 a, int32 b){ return Stats[a].Score < Stats[b].Score; });
-	const FPassStats& Med = Stats[Idx[Idx.Num()/2]];
-	double MinS = Stats[Idx[0]].Score, MaxS = Stats[Idx.Last()].Score;
-	const bool bStable = Med.Score > 0 && (MaxS - MinS) / Med.Score <= 0.03;
-
 	auto StatObj = [](const FPassStats& S){ TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
 		O->SetNumberField(TEXT("score"), FMath::RoundToDouble(S.Score)); O->SetNumberField(TEXT("avgFps"), R2(S.AvgFps));
 		O->SetNumberField(TEXT("p1LowFps"), R2(S.P1)); O->SetNumberField(TEXT("p01LowFps"), R2(S.P01));
@@ -630,23 +709,35 @@ void ABenchGameMode::FinishRun()
 		Sy->SetObjectField(TEXT("gpu"), G); Sy->SetObjectField(TEXT("cpu"), Cp); Sy->SetObjectField(TEXT("ramGiB"), M(St.Ram)); if (Sn.RamTotalGiB > 0) Sy->SetNumberField(TEXT("ramTotalGiB"), R2(Sn.RamTotalGiB));
 		Root->SetObjectField(TEXT("sysmon"), Sy);
 	}
-	TSharedRef<FJsonObject> T1 = StatObj(Med); T1->SetStringField(TEXT("id"), TEXT("T1")); T1->SetStringField(TEXT("name"), TEXT("City Night")); T1->SetBoolField(TEXT("skipped"), false);
-	TArray<TSharedPtr<FJsonValue>> PassArr; for (auto& S : Stats) PassArr.Add(MakeShared<FJsonValueObject>(StatObj(S)));
-	T1->SetArrayField(TEXT("passes"), PassArr);
-	Root->SetArrayField(TEXT("tests"), { MakeShared<FJsonValueObject>(T1) });
-	TSharedRef<FJsonObject> Scores = MakeShared<FJsonObject>(); Scores->SetNumberField(TEXT("gpu"), FMath::RoundToDouble(Med.Score)); Scores->SetField(TEXT("cpu"), MakeShared<FJsonValueNull>());
+	TArray<TSharedPtr<FJsonValue>> TestArr; TSharedRef<FJsonObject> PerTest = MakeShared<FJsonObject>();
+	double LogSum = 0; bool bStable = true; ResultLines.Reset();
+	for (int32 t = 0; t < TestPassFrames.Num(); ++t)
+	{
+		TArray<FPassStats> Stats; for (auto& F : TestPassFrames[t]) Stats.Add(Compute(F));
+		TArray<int32> Idx; for (int32 i = 0; i < Stats.Num(); ++i) Idx.Add(i);
+		Idx.Sort([&](int32 a, int32 b){ return Stats[a].Score < Stats[b].Score; });
+		const FPassStats& Med = Stats[Idx[Idx.Num()/2]];
+		const bool bS = Med.Score > 0 && (Stats[Idx.Last()].Score - Stats[Idx[0]].Score) / Med.Score <= 0.03;
+		bStable &= bS; LogSum += FMath::Loge(FMath::Max(1.0, Med.Score));
+		const FString Id = TestIds[t];
+		TSharedRef<FJsonObject> T = StatObj(Med); T->SetStringField(TEXT("id"), Id); T->SetStringField(TEXT("name"), TestName(Id)); T->SetBoolField(TEXT("skipped"), false); T->SetBoolField(TEXT("stable"), bS);
+		TArray<TSharedPtr<FJsonValue>> PassArr; for (auto& S : Stats) PassArr.Add(MakeShared<FJsonValueObject>(StatObj(S)));
+		T->SetArrayField(TEXT("passes"), PassArr);
+		if (RtConfigs.IsValidIndex(t) && RtConfigs[t].IsValid()) T->SetObjectField(TEXT("rtConfig"), RtConfigs[t]);
+		TestArr.Add(MakeShared<FJsonValueObject>(T)); PerTest->SetNumberField(Id, FMath::RoundToDouble(Med.Score));
+		UE_LOG(LogOmaBench, Display, TEXT("OmaBench %s: score=%.0f avgFps=%.1f p1=%.1f"), *Id, Med.Score, Med.AvgFps, Med.P1);
+		ResultLines.Add(FString::Printf(TEXT("%s %-18s %6.0f  %6.1f FPS  1%% %6.1f"), *Id, *TestName(Id).ToUpper(), Med.Score, Med.AvgFps, Med.P1));
+	}
+	const double Gpu = TestPassFrames.Num() ? FMath::Exp(LogSum / TestPassFrames.Num()) : 0.0;
+	Root->SetArrayField(TEXT("tests"), TestArr);
+	TSharedRef<FJsonObject> Scores = MakeShared<FJsonObject>(); Scores->SetNumberField(TEXT("gpu"), FMath::RoundToDouble(Gpu)); Scores->SetField(TEXT("cpu"), MakeShared<FJsonValueNull>());
+	Scores->SetObjectField(TEXT("tests"), PerTest); Scores->SetStringField(TEXT("gpuMethod"), TEXT("geomean"));
 	Root->SetObjectField(TEXT("scores"), Scores); Root->SetBoolField(TEXT("stable"), bStable);
 	const bool bOk = WriteJsonAtomic(ResultsPath, Root);
 	WriteProgress(bOk ? TEXT("done") : TEXT("failed"));
-	UE_LOG(LogOmaBench, Display, TEXT("OmaBench done: score=%.0f avgFps=%.1f p1=%.1f results=%s ok=%d"), Med.Score, Med.AvgFps, Med.P1, *ResultsPath, bOk);
+	UE_LOG(LogOmaBench, Display, TEXT("OmaBench done: score=%.0f tests=%d results=%s ok=%d"), Gpu, TestPassFrames.Num(), *ResultsPath, bOk);
 	ExitCode = bOk ? 0 : 1;
-	ResultLines = {
-		FString::Printf(TEXT("GPU SCORE ......... %.0f"), Med.Score),
-		FString::Printf(TEXT("AVG FPS ........... %.1f"), Med.AvgFps),
-		FString::Printf(TEXT("1%% LOW ............ %.1f"), Med.P1),
-		FString::Printf(TEXT("0.1%% LOW .......... %.1f"), Med.P01),
-		FString::Printf(TEXT("FRAME STDDEV ...... %.2f MS"), Med.Std),
-		FString::Printf(TEXT("STABLE ............ %s"), bStable ? TEXT("YES") : TEXT("NO")),
-		FString::Printf(TEXT("RESULTS -> %s"), *FPaths::GetCleanFilename(ResultsPath)),
-	};
+	ResultLines.Insert(FString::Printf(TEXT("GPU SCORE ......... %.0f%s"), Gpu, TestPassFrames.Num() > 1 ? TEXT("  (GEOMEAN)") : TEXT("")), 0);
+	ResultLines.Add(FString::Printf(TEXT("STABLE ............ %s"), bStable ? TEXT("YES") : TEXT("NO")));
+	ResultLines.Add(FString::Printf(TEXT("RESULTS -> %s"), *FPaths::GetCleanFilename(ResultsPath)));
 }

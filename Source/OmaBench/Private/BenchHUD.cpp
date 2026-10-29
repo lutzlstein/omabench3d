@@ -76,7 +76,7 @@ void ABenchHUD::DrawHUD()
 	const float Flick = 0.86f + 0.08f * FMath::Sin(Now * 53.0) + ((GFrameCounter & 7) == 0 ? -0.12f : 0.f);
 	const float IL = (GFrameCounter & 1) ? 0.f : 1.f;
 	auto L = [&](const FString& S, float x, float y, const FLinearColor& C, float s = 1.f) { Line(S, x, y + IL * 0.5f, A(C, C.A * Flick), Sc * s); };
-	const FString Serial = FString::Printf(TEXT("OMB-T1 // NEXUS-%s"), *GM->GetRunId().Right(6));
+	const FString Serial = FString::Printf(TEXT("OMB-%s // NEXUS-%s"), *GM->GetTestId(), *GM->GetRunId().Right(6));
 
 	// Faint forensic grid + centre crosshair (lines only; ~30 draws).
 	const FLinearColor Grid = A(Te, 0.07f); const FLinearColor Back(0.f, 0.f, 0.f, 0.7f);
@@ -107,7 +107,7 @@ void ABenchHUD::DrawHUD()
 			TEXT("TYRELL-OMABENCH ESPER  v0.2  // LUTZLSTEIN SYSTEMS 2019-2026"),
 			FString::Printf(TEXT("UE 5.8 :: VULKAN :: PALETTE %s"), *GM->GetThemeName().ToUpper()),
 			FString::Printf(TEXT("GPU0 ... %s  [OK]"), *GRHIAdapterName.ToUpper()),
-			FString::Printf(TEXT("SCENE T1 :: CITY NIGHT // %s [LOCKED]"), *Serial),
+			FString::Printf(TEXT("SCENE %s :: %s // %s [LOCKED]"), *GM->GetTestId(), *GM->GetTestName().ToUpper(), *Serial),
 			TEXT("VOIGHT-KAMPFF CALIBRATION .......... [OK]"),
 			TEXT("> ENHANCE"),
 		};
@@ -124,7 +124,7 @@ void ABenchHUD::DrawHUD()
 	// Header strip
 	Tile(Canvas, X - 12 * Sc, 26 * Sc, 600 * Sc, LH * 2.4f, Back);
 	L(Serial, X, 34 * Sc, Am);
-	L(FString::Printf(TEXT("CITY NIGHT // %s // %s"), bWarm ? TEXT("CALIBRATE") : TEXT("SCAN"), *GM->GetMonitorTag()), X, 34 * Sc + LH, A(Te, 0.85f), 0.8f);
+	L(FString::Printf(TEXT("%s%s // %s // %s"), GM->GetTestCount() > 1 ? *FString::Printf(TEXT("[%d/%d] "), GM->GetTestIndex() + 1, GM->GetTestCount()) : TEXT(""), *GM->GetTestName().ToUpper(), bWarm ? TEXT("CALIBRATE") : TEXT("SCAN"), *GM->GetMonitorTag()), X, 34 * Sc + LH, A(Te, 0.85f), 0.8f);
 	// Forensic telemetry column, top-right, label/value pairs.
 	float SysBottom = 24 * Sc;
 	if (GM->GetSysMon()) DrawSysMon(GM, W - 40 * Sc, 34 * Sc, Sc, SysBottom);

@@ -129,6 +129,7 @@ case "$cmd" in
         date:((.startedAt // "")|tostring|.[0:19]), score:(.scores.gpu // null), aborted:(.aborted == true), abortedAt:((.abortedAt // "")|tostring|.[0:16]),
         avgFps:((.tests[0].avgFps // null)|if .==null then null else (.*10|round/10) end),
         p1LowFps:((.tests[0].p1LowFps // null)|if .==null then null else (.*10|round/10) end),
+        tests:[(.tests // [])[0:4][] | {id:((.id // "")|tostring|.[0:4]), score:(.score // null), avgFps:((.avgFps // null)|if .==null then null else (.*10|round/10) end)}],
         monitor:((.env.monitor // "")|tostring|.[0:32]), refreshHz:((.env.refreshHz // null)|if .==null then null else round end),
         res:((.settings.res // "")|tostring|.[0:16]), theme:((.env.theme // .settings.theme // "")|tostring|.[0:48])}' "$f" 2>/dev/null
     done | jq -cs '{history: .}'

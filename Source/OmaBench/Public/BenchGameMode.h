@@ -29,11 +29,24 @@ public:
 	UPROPERTY() TArray<TObjectPtr<AActor>> Cars;
 	UPROPERTY() TObjectPtr<UMaterialInterface> CrtMaterial;
 	UPROPERTY() TObjectPtr<ACameraActor> Camera;
+	UPROPERTY() TObjectPtr<UStaticMesh> CylinderMesh;
+	UPROPERTY() TObjectPtr<UMaterialInterface> ChromeMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> FloorMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> GlassMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> EmitMaterial;
+	UPROPERTY() TObjectPtr<UMaterialInterface> HoloMaterial;
+	UPROPERTY() TArray<TObjectPtr<AActor>> T1Actors;
+	UPROPERTY() TArray<TObjectPtr<AActor>> T2Actors;
 
 	// Read-only state for the HUD.
 	EBenchPhase GetPhase() const { return Phase; }
 	double GetElapsed() const { return TotalElapsed; }
-	double GetTotal() const { return WarmupS + DurationS * Passes; }
+	double GetTotal() const { return (WarmupS + DurationS * Passes) * FMath::Max(1, TestIds.Num()); }
+	FString GetTestId() const { return TestIds.IsValidIndex(CurrentTest) ? TestIds[CurrentTest] : FString(TEXT("T1")); }
+	FString GetTestName() const { return TestName(GetTestId()); }
+	int32 GetTestIndex() const { return CurrentTest; }
+	int32 GetTestCount() const { return TestIds.Num(); }
+	static FString TestName(const FString& Id) { return Id == TEXT("T2") ? FString(TEXT("Off-World Hangar")) : FString(TEXT("City Night")); }
 	int32 GetPass() const { return FMath::Min(CurrentPass + 1, Passes); }
 	int32 GetPasses() const { return Passes; }
 	double GetLiveFps() const { return LiveFps; }
@@ -52,6 +65,14 @@ private:
 	void LoadPalette();
 	void ApplyVideoSettings();
 	void BuildScene();
+	void BuildHangar();
+	void UpdateHangarCamera(double T);
+	void ActivateTest(int32 Index);
+	TSharedRef<class FJsonObject> ApplyRtConfig(const FString& Id);
+	static const FVector HangarOrigin;
+	TArray<FString> TestIds; int32 CurrentTest = 0;
+	TArray<TArray<TArray<float>>> TestPassFrames;
+	TArray<TSharedPtr<class FJsonObject>> RtConfigs;
 	void UpdateCamera(double T);
 	void UpdateCars(double T);
 	struct FCarLane { FVector Origin; FVector Dir; float Speed; float Len; float Phase; };

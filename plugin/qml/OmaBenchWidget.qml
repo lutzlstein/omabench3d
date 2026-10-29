@@ -31,10 +31,10 @@ Panel {
   readonly property string theme: String(setting("theme", "omarchy"))
   readonly property bool sysmon: setting("sysmon", true) !== false
 
-  // Data-driven test catalogue: add T2/T3 here when the app ships them.
+  // Data-driven test catalogue: add T3 here when the app ships it. Multi-select runs in order; GPU score = geomean.
   readonly property var testCatalog: [
     { id: "T1", name: "City Night", detail: "raster · lumen · rain", available: true },
-    { id: "T2", name: "Ray Tracing", detail: "coming soon", available: false },
+    { id: "T2", name: "Off-World Hangar", detail: "hw rt · reflections · rt shadows", available: true },
     { id: "T3", name: "CPU Sim", detail: "coming soon", available: false }
   ]
 
@@ -55,7 +55,7 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, panel/fonts/OFL.txt), loaded from the plugin folder only.
+  // Bitcount Prop Single (OFL, qml/fonts/OFL.txt), loaded from the plugin folder only.
   FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
@@ -301,7 +301,7 @@ Panel {
             color: root.running ? root.ac : Commons.Color.popups.background
             text: (runBtn.sel ? "> " : "") + (root.benchState === "missing" ? "NOT INSTALLED"
               : root.running ? "ABORT  " + root.pixelBar(root.pct, 10) + " " + root.pct + "%"
-                + (root.progress ? "  P" + root.progress.pass + "/" + root.progress.passes : "")
+                + (root.progress ? "  " + (root.progress.testCount > 1 ? (root.progress.test || "") + " " : "") + "P" + root.progress.pass + "/" + root.progress.passes : "")
               : "> RUN")
           }
           MouseArea { anchors.fill: parent; onClicked: root.toggleRun() }
