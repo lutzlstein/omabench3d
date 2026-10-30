@@ -12,6 +12,12 @@ namespace OmaBench
 		if (!M) UE_LOG(LogTemp, Error, TEXT("OmaBench: missing mesh %s (run art/build.sh)"), Name);
 		return M;
 	}
+	// CC0 world-projected material (Scripts/make_cc0_materials.py); falls back if the art step has not run.
+	inline UMaterialInterface* LoadCC0(const TCHAR* Name, UMaterialInterface* Fallback)
+	{
+		UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, *FString::Printf(TEXT("/Game/OmaBench/CC0/%s.%s"), Name, Name));
+		return M ? M : Fallback;
+	}
 	// Bind materials by Blender slot name (slot "Paint.001" -> "Paint").
 	inline void BindSlots(UStaticMeshComponent* C, const TMap<FName, UMaterialInterface*>& Slots)
 	{

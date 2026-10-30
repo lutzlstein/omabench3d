@@ -66,11 +66,12 @@ void ABenchGameMode::BuildSkyline()
 	{
 		UMaterialInterface* TowerM = MID(TowerMaterial, [&](UMaterialInstanceDynamic* M){ M->SetVectorParameterValue(TEXT("WindowColor"), Warm); });
 		Box(TowerM, FVector(RoofCentre.X, RoofCentre.Y, RoofZ / 2), FVector(Half.X * 2, Half.Y * 2, RoofZ));
-		Box(Wet, FVector(RoofCentre.X, RoofCentre.Y, RoofZ + 30), FVector(Half.X * 2, Half.Y * 2, 60));
+		Box(OmaBench::LoadCC0(TEXT("MIW_Concrete034"), Wet), FVector(RoofCentre.X, RoofCentre.Y, RoofZ + 30), FVector(Half.X * 2, Half.Y * 2, 60));
+		UMaterialInterface* Parapet = OmaBench::LoadCC0(TEXT("MIW_PaintedMetal006"), Dark);
 		for (int32 s = -1; s <= 1; s += 2)
 		{
-			Box(Dark, FVector(RoofCentre.X + s * Half.X, RoofCentre.Y, RoofTop + 20), FVector(40, Half.Y * 2, 40));
-			Box(Dark, FVector(RoofCentre.X, RoofCentre.Y + s * Half.Y, RoofTop + 20), FVector(Half.X * 2, 40, 40));
+			Box(Parapet, FVector(RoofCentre.X + s * Half.X, RoofCentre.Y, RoofTop + 20), FVector(40, Half.Y * 2, 40));
+			Box(Parapet, FVector(RoofCentre.X, RoofCentre.Y + s * Half.Y, RoofTop + 20), FVector(Half.X * 2, 40, 40));
 		}
 		// Puddle sheen bands (even glossier) for reflections to land on.
 		for (int32 i = 0; i < 7; ++i) Box(ChromeV(FLinearColor(0.02f, 0.02f, 0.025f), 0.01f, 0.f), FVector(RoofCentre.X + Rng.FRandRange(-1100, 1100), RoofCentre.Y + Rng.FRandRange(-2000, 2000), RoofTop + 1), FVector(Rng.FRandRange(200, 600), Rng.FRandRange(150, 500), 2));

@@ -46,7 +46,7 @@ void ABenchGameMode::BuildDownpour()
 	auto ChromeV = [&](FLinearColor B, float R, float Mt) { return MID(ChromeMaterial, [&](UMaterialInstanceDynamic* M){ M->SetVectorParameterValue(TEXT("Base"), B); M->SetScalarParameterValue(TEXT("Roughness"), R); M->SetScalarParameterValue(TEXT("Metallic"), Mt); }); };
 	auto Emit = [&](FLinearColor C, float I) { return MID(EmitMaterial, [&](UMaterialInstanceDynamic* M){ M->SetVectorParameterValue(TEXT("Color"), C * I); }); };
 	UMaterialInterface* Dark = ChromeV(FLinearColor(0.03f, 0.03f, 0.035f), 0.35f, 0.2f);
-	UMaterialInterface* Concrete = ChromeV(FLinearColor(0.08f, 0.08f, 0.085f), 0.6f, 0.0f);
+	UMaterialInterface* Concrete = OmaBench::LoadCC0(TEXT("MIW_Concrete034"), ChromeV(FLinearColor(0.08f, 0.08f, 0.085f), 0.6f, 0.0f));
 	TMap<FName, UMaterialInterface*> Common = { {TEXT("Chrome"), ChromeV(FLinearColor(0.7f, 0.72f, 0.75f), 0.15f, 1)}, {TEXT("Dark"), Dark},
 		{TEXT("Paint"), ChromeV(FLinearColor(0.1f, 0.1f, 0.11f), 0.4f, 0.3f)}, {TEXT("EmitWhite"), Emit(FLinearColor(0.9f, 0.95f, 1), 14)},
 		{TEXT("EmitAmber"), Emit(Amber, 18)}, {TEXT("EmitGlyph"), Emit(Cyan, 20)}, {TEXT("EmitRed"), Emit(FLinearColor(1, 0.05f, 0.03f), 20)},
@@ -96,7 +96,7 @@ void ABenchGameMode::BuildDownpour()
 	{
 		const FVector L(Rng.FRandRange(-700, 700), 900 + i * 760 + Rng.FRandRange(-150, 150), 0);
 		Place(Vent, L, Rng.FRandRange(0, 90), Common);
-		Fx(TEXT("NS_Steam"), Site, L + FVector(0, 0, 40), 17 * i + 1);
+		Fx(TEXT("NS_Steam"), Site, L + FVector(0, 0, 12), 17 * i + 1);
 	}
 	// Rune signs (invented glyphs, no words) on the facades either side; one failing sign sputters sparks.
 	UStaticMesh* SignV[2] = { OmaBench::LoadMesh(TEXT("SM_SignV1")), OmaBench::LoadMesh(TEXT("SM_SignV2")) };

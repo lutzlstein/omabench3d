@@ -1,0 +1,28 @@
+# kind  id  (polyhaven models: gltf 1k | ambientcg materials: 1K-JPG | oga: zip url)
+ph exterior_aircon_unit
+ph modular_airduct_rectangular_01
+ph modular_chainlink_fence
+ph security_light
+ph security_camera_01
+ph modular_industrial_pipes_01
+ph propane_tank
+ph barrel_03
+ph utility_box_01
+ph utility_box_02
+ph plastic_crate_01
+ph plastic_crate_03
+ph wooden_crate_02
+ph cardboard_box_01
+ph modular_electric_cables
+ph metal_trash_can
+ph rollershutter_window_01
+ph trashbag
+ph water_manhole_cover
+acg Concrete034
+acg Asphalt031
+acg PaintedMetal006
+acg MetalPlates006
+acg Metal041B
+acg CorrugatedSteel007A
+# oga: zip url  [dir name]
+oga https://opengameart.org/sites/default/files/free_low_poly_vehicles_pack_by_rgsdev.zip rgs
