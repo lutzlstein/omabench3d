@@ -37,7 +37,7 @@ rm -rf ~/.local/share/omabench3d                         # optional: the downloa
 Runs with your normal user permissions; it only writes under `~/.local/share/omabench3d` and its own plugin settings.
 
 Maintainers: `tools/package.sh` builds `Packaged/`, `tools/release.sh` builds `dist/*.tar.zst` + `.sha256`,
-`tools/sync-manifest.sh` keeps the root `manifest.json` in step with `plugin/manifest.json`.
+the root `manifest.json` is the plugin's only manifest (entry points under `plugin/`).
 
 ## Tests and scoring (v0.4)
 

@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-python3 "$root/scripts/validate_manifest.py" "$root"
 bash -n "$root/bin/omabench3d-ctl"
 # status must emit valid JSON even when the app is missing
 "$root/bin/omabench3d-ctl" status /nonexistent | python3 -m json.tool >/dev/null
 "$root/bin/omabench3d-ctl" summary | python3 -m json.tool >/dev/null
 "$root/bin/omabench3d-ctl" monitors | python3 -m json.tool >/dev/null
 "$root/bin/omabench3d-ctl" themes | python3 -m json.tool >/dev/null
-# repo-root manifest (what `omarchy plugin add <repo-url>` reads) must mirror plugin/manifest.json
-if [[ -f "$root/../manifest.json" ]]; then
-  python3 - "$root" <<'PY'
+# the repo-root manifest.json is the only manifest (marketplace: one plugin, manifest at root); entry points resolve from the repo root
+python3 - "$root/.." <<'PY'
 import json, sys, os
-r = sys.argv[1]; m = json.load(open(os.path.join(r, "manifest.json"))); t = json.load(open(os.path.join(r, "..", "manifest.json")))
-m["entryPoints"] = {k: "plugin/" + v for k, v in m["entryPoints"].items()}
-assert m == t, "root manifest.json out of sync with plugin/manifest.json (regenerate: tools/sync-manifest.sh)"
-for v in t["entryPoints"].values(): assert os.path.isfile(os.path.join(r, "..", v)), v
+r = sys.argv[1]; t = json.load(open(os.path.join(r, "manifest.json")))
+for v in t["entryPoints"].values(): assert os.path.isfile(os.path.join(r, v)), v
 PY
-fi
+[[ ! -e "$root/manifest.json" ]] || { echo "plugin/manifest.json must not exist (root manifest.json is the only one)"; exit 1; }
 # start args: quick must give every queued test warmup 3 / duration 20; explicit values win; no quick = app defaults
 fake="$(mktemp -d)/OmaBench.sh"; printf '#!/bin/sh\n' > "$fake"; chmod +x "$fake"
 a="$(OMABENCH3D_DRYRUN=1 "$root/bin/omabench3d-ctl" start "$fake" T1,T2,T3 1920x1080 1 0 1 "" "" none auto 1 omarchy 1 standard)"
@@ -28,5 +24,5 @@ a="$(OMABENCH3D_DRYRUN=1 "$root/bin/omabench3d-ctl" start "$fake" T1,T2,T3 1920x
 [[ " $a " != *" -quick "* && " $a " != *"-duration="* ]] || { echo "non-quick got quick args: $a"; exit 1; }
 rm -rf "$(dirname "$fake")"
 "$root/bin/omabench3d-ctl" install-app 'http://bad' >/dev/null 2>&1 && { echo "install-app accepted bad url"; exit 1; }
-if command -v omarchy >/dev/null 2>&1; then omarchy plugin validate "$root"; fi
+if command -v omarchy >/dev/null 2>&1; then omarchy plugin validate "$root/.."; fi
 printf 'All portable plugin checks passed.\n'
