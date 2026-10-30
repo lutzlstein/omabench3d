@@ -56,7 +56,15 @@ public:
 	bool IsAborted() const { return bAborted; }
 	const class FSysMon* GetSysMon() const { return SysMon.Get(); }
 	FString GetRunId() const { return RunId; }
-	FString GetMonitorTag() const { return MonitorName.IsEmpty() ? FString(TEXT("AUTO")) : MonitorName + TEXT(" ") + MonitorHz + TEXT("HZ"); }
+	FString GetMonitorTag() const { return (MonitorName.IsEmpty() ? FString(TEXT("AUTO")) : MonitorName + TEXT(" ") + MonitorHz + TEXT("HZ")) + TEXT(" // ") + Tier.ToUpper(); }
+	FString GetTier() const { return Tier; }
+	bool ShowSlowHint() const { return bSlowHint; }
+
+	// Quality tier (3DMark-style): fixed internal render resolution + content/feature budgets.
+	// Scores are only comparable within one tier.
+	struct FTierCfg { const TCHAR* Name; int32 W, H; float Rain, Splash, Steam, Smoke, SearchScatter, TranslucencyPct; bool bHwrt; int32 Fog, FogGrid, FogZ, Shadow; };
+	static const FTierCfg& TierCfg(const FString& Name);
+	const FTierCfg& Cfg() const { return TierCfg(Tier); }
 
 private:
 	void ParseArgs();
@@ -106,6 +114,7 @@ private:
 	double WarmupS = 10.0, DurationS = 60.0;
 	int32 ResX = 2560, ResY = 1440;
 	bool bFullscreen = false;
+	FString Tier = TEXT("standard"); bool bSlowHint = false, bProfileGpu = false; double SlowAccum = 0; int32 ProfiledTest = -1; float RenderPct = 100;
 	FString MonitorName, MonitorHz, ResultsPath, ProgressPath, RunId, StartedAt;
 	bool bExitRequested = false, bNoHud = false, bNoPostFx = false;
 	double LiveFps = 0.0, FpsAccumT = 0.0, DoneHold = 0.0; int32 FpsAccumN = 0; int32 ExitCode = 0; int32 PixelSize = 4;

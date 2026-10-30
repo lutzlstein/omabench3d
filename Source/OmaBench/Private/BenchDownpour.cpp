@@ -127,7 +127,7 @@ void ABenchGameMode::BuildDownpour()
 			MC->SetCollisionEnabled(ECollisionEnabled::NoCollision); MC->SetRelativeScale3D(FVector(2.5f)); D->SetRootComponent(MC); OmaBench::BindSlots(MC, DS); MC->RegisterComponent();
 			USpotLightComponent* S = NewObject<USpotLightComponent>(D, TEXT("Search")); S->SetupAttachment(MC); S->SetMobility(EComponentMobility::Movable); S->RegisterComponent();
 			S->SetLightColor(FLinearColor(0.85f, 0.92f, 1)); S->SetIntensity(400000); S->SetAttenuationRadius(5000); S->SetOuterConeAngle(14); S->SetInnerConeAngle(6);
-			S->SetCastShadows(false); S->SetVolumetricScatteringIntensity(4.f);   // visible cone through fog/rain
+			S->SetCastShadows(false); S->SetVolumetricScatteringIntensity(Cfg().SearchScatter);   // visible cone through fog/rain
 			UPointLightComponent* Nav[2];
 			for (int32 k = 0; k < 2; ++k)
 			{
@@ -143,6 +143,12 @@ void ABenchGameMode::BuildDownpour()
 	RainHost->SetRootComponent(RR); RR->RegisterComponent();
 	Fx(TEXT("NS_Rain"), RainHost, FVector::ZeroVector, 1);
 	Fx(TEXT("NS_Splash"), RainHost, FVector::ZeroVector, 2);
+	// Tier particle budgets (user parameters exposed by the OmaFx systems).
+	for (UNiagaraComponent* C : DownpourFx) if (C)
+	{
+		C->SetVariableFloat(TEXT("RainRate"), Cfg().Rain); C->SetVariableFloat(TEXT("SplashRate"), Cfg().Splash);
+		C->SetVariableFloat(TEXT("SteamRate"), Cfg().Steam); C->SetVariableFloat(TEXT("SmokeRate"), Cfg().Smoke);
+	}
 	UE_LOG(LogOmaRain, Display, TEXT("Downpour built: %d stalls, %d fx components"), NStall, DownpourFx.Num());
 }
 

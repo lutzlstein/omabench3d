@@ -22,6 +22,8 @@ Panel {
   // ---- Config model (inline shell.json entry) -------------------------
   readonly property string appPath: String(setting("appPath", "auto"))
   readonly property string resolution: String(setting("resolution", "native"))
+  readonly property string tier: String(setting("tier", "auto"))   // auto | light | standard | extreme
+  property string autoTier: "standard"; property string autoGpu: ""
   readonly property int passes: Math.max(1, Math.min(5, Number(setting("passes", 1)) || 1))
   readonly property bool fullscreen: setting("fullscreen", true) === true
   readonly property bool quick: setting("quick", false) === true
@@ -89,6 +91,8 @@ Panel {
   readonly property var rows: {
     const r = []
     for (const t of testCatalog) r.push({ kind: "test", id: t.id })
+    r.push({ kind: "opt", key: "tier", label: "TIER",
+      value: tier === "auto" ? "AUTO (" + autoTier.toUpperCase() + ")" : tier.toUpperCase() })
     r.push({ kind: "opt", key: "resolution", label: "RESOLUTION",
       value: ({ native: "NATIVE", "1920x1080": "1080P", "2560x1440": "1440P", "3840x2160": "4K" })[resolution] || resolution })
     r.push({ kind: "opt", key: "passes", label: "PASSES", value: String(passes) })
@@ -115,7 +119,8 @@ Panel {
   }
   function changeOpt(key, dir) {
     if (running) return
-    if (key === "resolution") save({ resolution: cycle(["native", "1920x1080", "2560x1440", "3840x2160"], resolution, dir) })
+    if (key === "tier") save({ tier: cycle(["auto", "light", "standard", "extreme"], tier, dir) })
+    else if (key === "resolution") save({ resolution: cycle(["native", "1920x1080", "2560x1440", "3840x2160"], resolution, dir) })
     else if (key === "passes") save({ passes: ((passes - 1 + dir + 5) % 5) + 1 })
     else if (key === "fullscreen") save({ fullscreen: !fullscreen })
     else if (key === "quick") save({ quick: !quick })
@@ -138,21 +143,28 @@ Panel {
   function refreshDetails() {
     if (!summaryProc.running) summaryProc.running = true
     if (!monitorsProc.running) monitorsProc.running = true
+    if (!tierProc.running) tierProc.running = true
     if (!themesProc.running) themesProc.running = true
   }
   function openResults() {
     Quickshell.execDetached(["xdg-open", Quickshell.env("HOME") + "/.local/share/omabench3d/results"])
   }
   property var install: null   // {state: downloading|verifying|unpacking|done|failed, msg}
-  readonly property bool installing: install && ["downloading", "verifying", "unpacking"].indexOf(install.state) >= 0
-    && Date.now() / 1000 - (install.at || 0) < 900
+  property real installRequestedAt: 0   // debounce: a fresh click counts as installing until ctl reports
+  readonly property bool installing: (Date.now() - installRequestedAt < 10000 && !(install && ["done", "failed"].indexOf(install.state) >= 0 && (install.at || 0) * 1000 >= installRequestedAt - 2000))
+    || (install && ["downloading", "verifying", "unpacking"].indexOf(install.state) >= 0 && Date.now() / 1000 - (install.at || 0) < 900)
+  readonly property string installLabel: !install ? "STARTING" : install.state.toUpperCase() + (install.state === "downloading" && install.pct !== null && install.pct !== undefined ? " " + install.pct + "%" : "")
+  property real lastRunClick: 0
   function installApp() {
     if (installing) return
-    install = { state: "downloading", msg: "starting", at: Date.now() / 1000 }
+    installRequestedAt = Date.now()
+    install = { state: "downloading", msg: "starting", pct: 0, at: Date.now() / 1000 }
     Quickshell.execDetached([ctl, "install-app"])
     pollTimer.restart()
   }
   function toggleRun() {
+    if (Date.now() - lastRunClick < 1500) return   // debounce double clicks
+    lastRunClick = Date.now()
     if (benchState === "missing") { installApp(); return }
     if (running) {
       Quickshell.execDetached([ctl, "stop"])
@@ -161,7 +173,7 @@ Panel {
       benchState = "starting"
       startRequestedAt = Date.now()
       Quickshell.execDetached([ctl, "start", appPath, selectedTests().join(",") || "T1", resolution, String(passes),
-        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor, pixel, hud ? "1" : "0", theme, sysmon ? "1" : "0"])
+        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor, pixel, hud ? "1" : "0", theme, sysmon ? "1" : "0", tier === "auto" ? autoTier : tier])
     }
     pollTimer.restart()
   }
@@ -180,7 +192,7 @@ Panel {
   readonly property color statusColor: status === "run" ? Commons.Color.accent
     : status === "fail" ? Commons.Color.urgent : status === "abort" ? Commons.Color.muted : root.barFg
   readonly property string tip: {
-    if (benchState === "missing") return root.installing ? "omabench3d · installing app (" + root.install.state + ")" : "omabench3d · app not installed\nClick: panel → INSTALL APP"
+    if (benchState === "missing") return root.installing ? "omabench3d · installing app (" + root.installLabel.toLowerCase() + ")" : "omabench3d · app not installed\nClick: panel → INSTALL APP"
     if (benchState === "error") return "omabench3d · error (see last-run.log)"
     let s = "omabench3d"
     if (status === "run") s += " · running" + (pct > 0 ? " " + pct + "%" : " (booting)")
@@ -357,7 +369,7 @@ Panel {
             font.bold: true; font.pixelSize: Style.font.subtitle
             color: root.running ? root.ac : Commons.Color.popups.background
             text: (runBtn.sel ? "> " : "") + (root.benchState === "missing"
-              ? (root.installing ? "INSTALLING… " + root.install.state.toUpperCase()
+              ? (root.installing ? "INSTALLING… " + root.installLabel
                  : root.install && root.install.state === "failed" ? "INSTALL FAILED (" + root.install.msg + ") · RETRY" : "INSTALL APP")
               : root.running ? "ABORT  " + root.pixelBar(root.pct, 10) + " " + root.pct + "%"
                 + (root.progress ? "  " + (root.progress.testCount > 1 ? (root.progress.test || "") + " " : "") + "P" + root.progress.pass + "/" + root.progress.passes : "")
@@ -446,6 +458,13 @@ Panel {
         try { const s = JSON.parse(String(text).slice(0, 16384)); root.history = Array.isArray(s.history) ? s.history.slice(0, 8) : [] }
         catch (e) { root.history = [] }
       }
+    }
+  }
+  Process {
+    id: tierProc
+    command: [root.ctl, "tier"]
+    stdout: StdioCollector {
+      onStreamFinished: { try { const t = JSON.parse(String(text).slice(0, 512)); if (/^(light|standard|extreme)$/.test(t.tier)) root.autoTier = t.tier; root.autoGpu = String(t.gpu || "").slice(0, 64) } catch (e) {} }
     }
   }
   Process {

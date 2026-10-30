@@ -151,9 +151,12 @@ FString Bounds(float X, float Y, float Z0, float Z1)
 {
 	return FString::Printf(TEXT("{\"SimTarget\":\"GPUComputeSim\",\"bDeterminism\":true,\"bLocalSpace\":false,\"CalculateBoundsMode\":\"Fixed\",\"FixedBounds\":{\"Min\":{\"X\":%f,\"Y\":%f,\"Z\":%f},\"Max\":{\"X\":%f,\"Y\":%f,\"Z\":%f},\"IsValid\":1},\"AllocationMode\":\"AutomaticEstimate\"}"), -X, -Y, Z0, X, Y, Z1);
 }
-const TCHAR* Sprite(const TCHAR* Mat, bool bVel, bool bSort = false)
+// MinCam > 0: cull sprites whose centre is closer than MinCam to the camera (a big lit puff right at the lens is a
+// full-screen quad of translucent overdraw for almost no visual gain).
+const TCHAR* Sprite(const TCHAR* Mat, bool bVel, bool bSort = false, float MinCam = 0.f)
 {
-	static FString S; S = FString::Printf(TEXT("{\"Material\":\"%s\",\"Alignment\":\"%s\",\"SortMode\":\"%s\"}"), Mat, bVel ? TEXT("VelocityAligned") : TEXT("Unaligned"), bSort ? TEXT("ViewDistance") : TEXT("None"));
+	static FString S; S = FString::Printf(TEXT("{\"Material\":\"%s\",\"Alignment\":\"%s\",\"SortMode\":\"%s\"%s}"), Mat, bVel ? TEXT("VelocityAligned") : TEXT("Unaligned"), bSort ? TEXT("ViewDistance") : TEXT("None"),
+		MinCam > 0.f ? *FString::Printf(TEXT(",\"bEnableCameraDistanceCulling\":true,\"MinCameraDistance\":%f,\"MaxCameraDistance\":100000.0"), MinCam) : TEXT(""));
 	return *S;
 }
 }
@@ -275,7 +278,7 @@ int32 UOmaFxCommandlet::Main(const FString& Params)
 		B.Add(TEXT("PU"), TEXT("Solve"));
 		FName Ss = B.Add(TEXT("PU"), TEXT("ScaleSize")); B.Set(TEXT("PU"), Ss, TEXT("Scale Sprite Size Mode"), TEXT("Uniform")); B.Set(TEXT("PU"), Ss, TEXT("Uniform Scale Factor"), TEXT("=1.0 + Particles.NormalizedAge * 5.0"));
 		FName Sc = B.Add(TEXT("PU"), TEXT("ScaleColor")); B.Set(TEXT("PU"), Sc, TEXT("Scale Alpha"), TEXT("=saturate(Particles.NormalizedAge * 6.0) * (1.0 - Particles.NormalizedAge)"));
-		B.Renderer(UNiagaraSpriteRendererProperties::StaticClass(), Sprite(TEXT("/Game/OmaBench/Materials/M_FxSmoke.M_FxSmoke"), false, true));
+		B.Renderer(UNiagaraSpriteRendererProperties::StaticClass(), Sprite(TEXT("/Game/OmaBench/Materials/M_FxSmoke.M_FxSmoke"), false, true, 220.f));
 	});
 	// Street smoke/haze: big slow lit sprites filling the market canyon around the camera.
 	Build(TEXT("NS_Smoke"), 505, [](FSysBuilder& B) {
@@ -295,7 +298,7 @@ int32 UOmaFxCommandlet::Main(const FString& Params)
 		FName Dr = B.Add(TEXT("PU"), TEXT("Drag")); B.Set(TEXT("PU"), Dr, TEXT("Drag"), TEXT("1.0"));
 		B.Add(TEXT("PU"), TEXT("Solve"));
 		FName Sc = B.Add(TEXT("PU"), TEXT("ScaleColor")); B.Set(TEXT("PU"), Sc, TEXT("Scale Alpha"), TEXT("=sin(Particles.NormalizedAge * 3.14159)"));
-		B.Renderer(UNiagaraSpriteRendererProperties::StaticClass(), Sprite(TEXT("/Game/OmaBench/Materials/M_FxSmoke.M_FxSmoke"), false, true));
+		B.Renderer(UNiagaraSpriteRendererProperties::StaticClass(), Sprite(TEXT("/Game/OmaBench/Materials/M_FxSmoke.M_FxSmoke"), false, true, 500.f));
 	});
 	FFileHelper::SaveStringToFile(Report, *(FPaths::ProjectSavedDir() / TEXT("omafx_report.txt")));
 	UE_LOG(LogOmaFx, Display, TEXT("OMAFX done, %d errors"), TotalErr);

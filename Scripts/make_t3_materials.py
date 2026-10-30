@@ -42,15 +42,15 @@ def soft_sprite(name, blend, gain, depth_fade=0.0):
 soft_sprite("M_FxRain", unreal.BlendMode.BLEND_ADDITIVE, 1.0)
 soft_sprite("M_FxSpark", unreal.BlendMode.BLEND_ADDITIVE, 1.0)
 
-# Smoke/steam: lit translucent puffs. Per-pixel 3D noise (animated, world space) + depth fade -> real fill-rate/overdraw cost.
+# Smoke/steam: lit translucent puffs, lit per vertex (cheap; the puffs are soft anyway), 2-octave ALU noise. Per-pixel 3D noise (animated, world space) + depth fade -> real fill-rate/overdraw cost.
 m = base("M_FxSmoke", unreal.BlendMode.BLEND_TRANSLUCENT, unlit=False)
-m.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_VOLUMETRIC_NON_DIRECTIONAL)
+m.set_editor_property("translucency_lighting_mode", unreal.TranslucencyLightingMode.TLM_VOLUMETRIC_PER_VERTEX_NON_DIRECTIONAL)
 pc = ex(m, unreal.MaterialExpressionParticleColor, -1100, 0)
 uv = ex(m, unreal.MaterialExpressionTextureCoordinate, -1100, 200)
 wp = ex(m, unreal.MaterialExpressionWorldPosition, -1100, 350)
 tm = ex(m, unreal.MaterialExpressionTime, -1100, 500)
 nz = ex(m, unreal.MaterialExpressionNoise, -800, 350)
-nz.set_editor_property("scale", 0.004); nz.set_editor_property("levels", 4); nz.set_editor_property("output_min", 0.0); nz.set_editor_property("output_max", 1.0)
+nz.set_editor_property("scale", 0.004); nz.set_editor_property("levels", 2); nz.set_editor_property("output_min", 0.0); nz.set_editor_property("output_max", 1.0)
 nz.set_editor_property("noise_function", unreal.NoiseFunction.NOISEFUNCTION_GRADIENT_ALU)
 pos = custom(m, "return P + float3(0, 0, -T * 40);", ["P", "T"], -950, 420, unreal.CustomMaterialOutputType.CMOT_FLOAT3)
 L.connect_material_expressions(wp, "", pos, "P"); L.connect_material_expressions(tm, "", pos, "T")

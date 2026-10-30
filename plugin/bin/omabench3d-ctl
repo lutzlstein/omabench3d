@@ -37,11 +37,23 @@ install_app() {
   [[ "$url" =~ ^(https://|file://)[A-Za-z0-9._~:/@%+-]+\.tar\.zst$ ]] || { echo "bad url" >&2; return 2; }
   for d in curl zstd tar sha256sum; do command -v "$d" >/dev/null || { st="missing $d"; break; }; done
   mkdir -p "$data"; st="${st:-}"
-  put() { printf '{"state":"%s","msg":"%s","at":%s}\n' "$1" "$2" "$(date +%s)" > "$installfile.tmp" && mv "$installfile.tmp" "$installfile"; }
+  put() { printf '{"state":"%s","msg":"%s","pct":%s,"at":%s}\n' "$1" "$2" "${3:-null}" "$(date +%s)" > "$installfile.tmp" && mv "$installfile.tmp" "$installfile"; }
+  # One install at a time (double clicks in the panel, or a second shell).
+  exec 9>"$data/.install.lock"; flock -n 9 || { echo "install already running" >&2; return 0; }
   [[ -n "$st" ]] && { put failed "$st"; echo "$st" >&2; return 1; }
   tmp="$(mktemp -d "$data/.install.XXXXXX")"
-  put downloading "fetching release"
-  if ! curl -fL --retry 2 -o "$tmp/app.tar.zst" "$url" || ! curl -fL --retry 2 -o "$tmp/app.tar.zst.sha256" "$url.sha256"; then
+  put downloading "fetching release" 0
+  local total cpid sz pct ok=1
+  total="$(curl -fsIL "$url" 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="content-length:" {n=$2} END {print n+0}')"
+  [[ "$url" == file://* ]] && total="$(stat -c %s "${url#file://}" 2>/dev/null || echo 0)"
+  curl -fsL --retry 2 -o "$tmp/app.tar.zst" "$url" & cpid=$!
+  while kill -0 "$cpid" 2>/dev/null; do
+    sz="$(stat -c %s "$tmp/app.tar.zst" 2>/dev/null || echo 0)"
+    (( total > 0 )) && pct=$(( sz * 100 / total )) && put downloading "$pct%" "$pct"
+    sleep 1
+  done
+  wait "$cpid" || ok=0
+  if (( ! ok )) || ! curl -fsL --retry 2 -o "$tmp/app.tar.zst.sha256" "$url.sha256"; then
     rm -rf "$tmp"; put failed "download failed"; echo "download failed" >&2; return 1
   fi
   put verifying "checking sha256"
@@ -67,6 +79,24 @@ running_pid() {
 
 cmd="${1:-status}"
 # Poll (<=15 s) for the OmaBench client, then float/resize/centre that one window.
+# Default quality tier from the strongest GPU: discrete NVIDIA/AMD by VRAM (laptop parts capped at
+# standard), everything else (iGPU, unknown) light. Prints "tier<TAB>gpu name".
+detect_tier() {
+  local name="" mib=0 t=light f v
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    IFS=, read -r name mib < <(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null | sort -t, -k2 -n | tail -1)
+    mib="${mib// /}"
+  fi
+  if [[ -z "$name" ]]; then
+    for f in /sys/class/drm/card*/device/mem_info_vram_total; do
+      [[ -r "$f" ]] || continue; v=$(( $(cat "$f") / 1048576 )); (( v > mib )) && { mib=$v; name="AMD GPU"; }
+    done
+  fi
+  [[ "$mib" =~ ^[0-9]+$ ]] || mib=0
+  if (( mib >= 6000 )); then t=standard; (( mib >= 12000 )) && [[ ! "$name" =~ Laptop|Mobile|Max-Q ]] && t=extreme; fi
+  printf '%s\t%s\n' "$t" "$(tr -cd 'A-Za-z0-9 ._()-' <<<"${name:-integrated}" | head -c 64)"
+}
+
 float_window() {
   # Float the benchmark window at exactly the requested size, centered on the target
   # monitor. Match on class only (a title match could grab e.g. a browser tab named
@@ -117,7 +147,7 @@ case "$cmd" in
   start)
     app="$(expand "${2:-}")"; tests="${3:-T1}"; res="${4:-native}"; passes="${5:-1}"
     fs="${6:-1}"; quick="${7:-0}"; warm="${8:-}"; dur="${9:-}"; mon="${10:-auto}"
-    pixel="${11:-auto}"; hud="${12:-1}"; theme="${13:-omarchy}"; sysmon="${14:-1}"
+    pixel="${11:-auto}"; hud="${12:-1}"; theme="${13:-omarchy}"; sysmon="${14:-1}"; tier="${15:-auto}"
     [[ -x "$app" ]] || { echo "not installed: $app" >&2; exit 3; }
     running_pid >/dev/null && { echo "already running" >&2; exit 4; }
     [[ "$tests" =~ ^[A-Za-z0-9,]{1,64}$ ]] || { echo "bad tests" >&2; exit 2; }
@@ -130,6 +160,9 @@ case "$cmd" in
     [[ "$warm" =~ ^[0-9]{1,3}$ ]] && args+=("-warmup=$warm")
     [[ "$dur" =~ ^[0-9]{1,4}$ ]] && args+=("-duration=$dur")
     case "$pixel" in auto) ;; 0|2|4|8) args+=("-pixel=$pixel") ;; *) echo "bad pixel" >&2; exit 2 ;; esac
+    [[ "$tier" =~ ^(light|standard|extreme)$ ]] || tier="$(detect_tier | cut -f1)"
+    args+=("-tier=$tier")
+    [[ "${OMABENCH3D_PROFILEGPU:-}" == 1 ]] && args+=(-profilegpu)   # dev: dump one GPU profile per test to the log
     [[ "$hud" == 0 ]] && args+=(-nohud)
     [[ "$sysmon" == 0 ]] && args+=(-nosysmon)
     # Theme: live Omarchy theme (default) or a named preset; passed as a fixed dir.
@@ -183,8 +216,11 @@ case "$cmd" in
         p1LowFps:((.tests[0].p1LowFps // null)|if .==null then null else (.*10|round/10) end),
         tests:[(.tests // [])[0:4][] | {id:((.id // "")|tostring|.[0:4]), score:(.score // null), avgFps:((.avgFps // null)|if .==null then null else (.*10|round/10) end)}],
         monitor:((.env.monitor // "")|tostring|.[0:32]), refreshHz:((.env.refreshHz // null)|if .==null then null else round end),
-        res:((.settings.res // "")|tostring|.[0:16]), theme:((.env.theme // .settings.theme // "")|tostring|.[0:48])}' "$f" 2>/dev/null
+        res:((.settings.res // "")|tostring|.[0:16]), tier:((.settings.tier // "")|tostring|.[0:12]), theme:((.env.theme // .settings.theme // "")|tostring|.[0:48])}' "$f" 2>/dev/null
     done | jq -cs '{history: .}'
+    ;;
+  tier)   # auto-detected default tier for the panel
+    IFS=$'\t' read -r t g < <(detect_tier); command -v jq >/dev/null && jq -cn --arg t "$t" --arg g "$g" '{tier:$t, gpu:$g}' || printf '{"tier":"%s"}\n' "$t"
     ;;
   monitors)
     { command -v hyprctl >/dev/null && command -v jq >/dev/null; } || { echo '[]'; exit 0; }

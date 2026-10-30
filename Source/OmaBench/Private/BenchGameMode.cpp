@@ -33,6 +33,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Kismet/GameplayStatics.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"
@@ -64,7 +65,18 @@ public:
 };
 
 DEFINE_LOG_CATEGORY_STATIC(LogOmaBench, Log, All);
-static const TCHAR* GAppVersion = TEXT("0.1.0");
+// App version comes from Config/DefaultGame.ini ProjectVersion (single source of truth).
+static FString AppVersion() { FString V; GConfig->GetString(TEXT("/Script/EngineSettings.GeneralProjectSettings"), TEXT("ProjectVersion"), V, GGameIni); return V.IsEmpty() ? FString(TEXT("dev")) : V; }
+#define GAppVersion (*AppVersion())
+
+const ABenchGameMode::FTierCfg& ABenchGameMode::TierCfg(const FString& Name)
+{
+	//                         name        render W x H   rain     splash   steam  smoke  scatter transl% hwrt  fog grid z  shadow
+	static const FTierCfg L = { TEXT("light"),    1280,  720, 100000.f, 25000.f, 120.f,  80.f, 0.f,  50.f, false, 0,  16,  64, 1 };
+	static const FTierCfg S = { TEXT("standard"), 1920, 1080, 200000.f, 50000.f, 240.f, 150.f, 2.f,  50.f, true,  1,  16,  64, 2 };
+	static const FTierCfg X = { TEXT("extreme"),  2560, 1440, 400000.f,120000.f, 600.f, 300.f, 4.f,  70.f, true,  1,   8, 128, 3 };
+	return Name == TEXT("light") ? L : Name == TEXT("extreme") ? X : S;
+}
 
 ABenchGameMode::ABenchGameMode()
 {
@@ -104,6 +116,8 @@ void ABenchGameMode::ParseArgs()
 	FParse::Value(Cmd, TEXT("-monitor="), MonitorName); FParse::Value(Cmd, TEXT("-refresh="), MonitorHz);
 	bNoPostFx = FParse::Param(Cmd, TEXT("nopostfx"));
 	PixelSize = FMath::Max(1, FMath::RoundToInt(ResY / 360.f));
+	{ FString T; if (FParse::Value(Cmd, TEXT("-tier="), T)) Tier = TierCfg(T.ToLower()).Name; }
+	bProfileGpu = FParse::Param(Cmd, TEXT("profilegpu"));
 	FParse::Value(Cmd, TEXT("-pixel="), PixelSize); PixelSize = FMath::Clamp(PixelSize, 0, 16);
 	FString Tests; FParse::Value(Cmd, TEXT("-tests="), Tests, /*bShouldStopOnSeparator*/ false);
 	{
@@ -133,6 +147,17 @@ void ABenchGameMode::ApplyVideoSettings()
 		S->SetFullscreenMode(bFullscreen ? EWindowMode::Fullscreen : EWindowMode::Windowed);
 		S->ApplySettings(false);
 	}
+	// Tier: fixed internal render resolution (same pixel count for any window/aspect), upscaled by TSR
+	// to the window; plus shadow / volumetric fog / translucency budgets. Set after ApplySettings (it resets sg.*).
+	const FTierCfg& T = Cfg();
+	RenderPct = FMath::Clamp(100.f * FMath::Sqrt(float(T.W) * T.H / FMath::Max(1.f, float(ResX) * ResY)), 25.f, 200.f);
+	Set(TEXT("r.ScreenPercentage"), *FString::SanitizeFloat(RenderPct));
+	Set(TEXT("sg.ShadowQuality"), *FString::FromInt(T.Shadow));
+	Set(TEXT("r.VolumetricFog"), *FString::FromInt(T.Fog));
+	Set(TEXT("r.VolumetricFog.GridPixelSize"), *FString::FromInt(T.FogGrid));
+	Set(TEXT("r.VolumetricFog.GridSizeZ"), *FString::FromInt(T.FogZ));
+	Set(TEXT("r.SeparateTranslucencyScreenPercentage"), *FString::SanitizeFloat(T.TranslucencyPct));
+	UE_LOG(LogOmaBench, Display, TEXT("OmaBench tier %s: render %dx%d px-equivalent (screen %% %.1f of %dx%d)"), T.Name, T.W, T.H, RenderPct, ResX, ResY);
 	if (GEngine) GEngine->bUseFixedFrameRate = false, GEngine->bSmoothFrameRate = false;
 }
 
@@ -473,21 +498,24 @@ void ABenchGameMode::UpdateCamera(double T)
 // reflections, multi-bounce reflections/refraction, translucent front-layer reflections, RT shadows.
 TSharedRef<FJsonObject> ABenchGameMode::ApplyRtConfig(const FString& Id)
 {
-	const bool b2 = Id == TEXT("T2");
+	// Light: software Lumen everywhere. Standard: HW Lumen; T2 gets HWRT reflections (surface-cache lit,
+	// 2 bounces) + 1 spp RT shadows. Extreme: T2 hit-lighting, 4 bounces, refraction, 2 spp RT shadows.
+	const bool bHw = Cfg().bHwrt, bX = Tier == TEXT("extreme");
+	const bool b2 = Id == TEXT("T2") && bHw;
 	const TPair<const TCHAR*, const TCHAR*> Cfg[] = {
-		{ TEXT("r.Lumen.HardwareRayTracing"), TEXT("1") },
-		{ TEXT("r.Lumen.HardwareRayTracing.LightingMode"), b2 ? TEXT("2") : TEXT("0") },
-		{ TEXT("r.Lumen.Reflections.HardwareRayTracing"), TEXT("1") },
-		{ TEXT("r.Lumen.Reflections.ScreenTraces"), b2 ? TEXT("0") : TEXT("1") },
-		{ TEXT("r.Lumen.Reflections.MaxRoughnessToTrace"), b2 ? TEXT("0.6") : TEXT("0.4") },
-		{ TEXT("r.Lumen.Reflections.MaxReflectionBounces"), b2 ? TEXT("4") : TEXT("1") },
-		{ TEXT("r.Lumen.Reflections.MaxRefractionBounces"), b2 ? TEXT("2") : TEXT("0") },
+		{ TEXT("r.Lumen.HardwareRayTracing"), bHw ? TEXT("1") : TEXT("0") },
+		{ TEXT("r.Lumen.HardwareRayTracing.LightingMode"), b2 && bX ? TEXT("2") : TEXT("0") },
+		{ TEXT("r.Lumen.Reflections.HardwareRayTracing"), bHw ? TEXT("1") : TEXT("0") },
+		{ TEXT("r.Lumen.Reflections.ScreenTraces"), b2 && bX ? TEXT("0") : TEXT("1") },
+		{ TEXT("r.Lumen.Reflections.MaxRoughnessToTrace"), b2 ? (bX ? TEXT("0.6") : TEXT("0.5")) : TEXT("0.4") },
+		{ TEXT("r.Lumen.Reflections.MaxReflectionBounces"), b2 ? (bX ? TEXT("4") : TEXT("2")) : TEXT("1") },
+		{ TEXT("r.Lumen.Reflections.MaxRefractionBounces"), b2 && bX ? TEXT("2") : TEXT("0") },
 		{ TEXT("r.Lumen.TranslucencyReflections.FrontLayer.Enable"), b2 ? TEXT("1") : TEXT("0") },
 		{ TEXT("r.RayTracing.Shadows"), b2 ? TEXT("1") : TEXT("0") },
-		{ TEXT("r.RayTracing.Shadows.SamplesPerPixel"), b2 ? TEXT("2") : TEXT("1") },
+		{ TEXT("r.RayTracing.Shadows.SamplesPerPixel"), b2 && bX ? TEXT("2") : TEXT("1") },
 	};
 	TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
-	O->SetStringField(TEXT("profile"), b2 ? TEXT("hwrt-max") : TEXT("hw-lumen-default"));
+	O->SetStringField(TEXT("profile"), !bHw ? TEXT("sw-lumen") : b2 ? (bX ? TEXT("hwrt-max") : TEXT("hwrt-standard")) : TEXT("hw-lumen-default"));
 	TSharedRef<FJsonObject> Vars = MakeShared<FJsonObject>(); TArray<TSharedPtr<FJsonValue>> Missing;
 	for (const auto& KV : Cfg)
 	{
@@ -621,6 +649,10 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	else if (Phase == EBenchPhase::Running)
 	{
 		if (CurrentFrames.Num() < 2000000) CurrentFrames.Add(float(Dt * 1000.0));
+		// Safety hint (never aborts): ~3 s worth of >250 ms frames without recovering -> suggest a lower tier.
+		SlowAccum = Dt > 0.25 ? SlowAccum + Dt : FMath::Max(0.0, SlowAccum - Dt);
+		if (!bSlowHint && SlowAccum >= 3.0) { bSlowHint = true; UE_LOG(LogOmaBench, Warning, TEXT("OmaBench slow frames (>250 ms for ~3 s) on tier %s: suggesting a lower tier"), *Tier); }
+		if (bProfileGpu && ProfiledTest != CurrentTest && PhaseTime >= DurationS * 0.5) { ProfiledTest = CurrentTest; UE_LOG(LogOmaBench, Display, TEXT("OmaBench profilegpu %s"), *GetTestId()); GEngine->Exec(GetWorld(), TEXT("profilegpu")); }
 		if (PhaseTime >= DurationS)
 		{
 			PassFrames.Add(MoveTemp(CurrentFrames)); CurrentFrames = {};
@@ -690,9 +722,11 @@ void ABenchGameMode::FillCommon(const TSharedRef<FJsonObject>& Root) const
 	TSharedRef<FJsonObject> Set = MakeShared<FJsonObject>();
 	Set->SetStringField(TEXT("res"), FString::Printf(TEXT("%dx%d"), ResX, ResY)); Set->SetNumberField(TEXT("passes"), Passes);
 	Set->SetStringField(TEXT("preset"), Passes == 1 ? TEXT("quick") : TEXT("standard")); Set->SetBoolField(TEXT("fullscreen"), bFullscreen);
+	Set->SetStringField(TEXT("tier"), Tier); Set->SetStringField(TEXT("renderRes"), FString::Printf(TEXT("%dx%d"), Cfg().W, Cfg().H));
+	Set->SetNumberField(TEXT("screenPercentage"), FMath::RoundToDouble(RenderPct * 10) / 10); Root->SetBoolField(TEXT("slowHint"), bSlowHint);
 	Set->SetNumberField(TEXT("warmupS"), WarmupS); Set->SetStringField(TEXT("theme"), ThemeName); Set->SetBoolField(TEXT("postFx"), !bNoPostFx); Set->SetNumberField(TEXT("pixel"), bNoPostFx ? 0 : PixelSize); Set->SetBoolField(TEXT("hud"), !bNoHud); Set->SetBoolField(TEXT("sysmon"), !bNoSysmon); Set->SetNumberField(TEXT("durationS"), DurationS);
 	{ TArray<TSharedPtr<FJsonValue>> TA; for (const FString& T : TestIds) TA.Add(MakeShared<FJsonValueString>(T)); Set->SetArrayField(TEXT("tests"), TA); }
-	Set->SetStringField(TEXT("gpuScoreMethod"), TEXT("geomean(test scores); test score = 100*avgFps*clamp(1-cov,0.8,1), median of passes"));
+	Set->SetStringField(TEXT("gpuScoreMethod"), TEXT("geomean(test scores); test score = 100*avgFps*clamp(1-cov,0.8,1), median of passes; comparable only within one tier"));
 	Root->SetObjectField(TEXT("settings"), Set);
 }
 

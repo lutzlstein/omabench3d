@@ -143,6 +143,13 @@ void ABenchHUD::DrawHUD()
 	for (int32 k = 0; k <= 10; ++k) Canvas->K2_DrawLine(FVector2D(X + bw * k / 10, by - 4 * Sc), FVector2D(X + bw * k / 10, by + 4 * Sc), 1.f, A(Te, 0.4f));
 	L(FString::Printf(TEXT("TRACK %3d%%"), int32(Pct * 100)), X, by + 8 * Sc, Te, 0.8f);
 	L(TEXT("ESC // ABORT"), W - X - 150 * Sc, by - 8 * Sc, A(Te, 0.7f), 0.8f);
+	if (GM->ShowSlowHint())
+	{
+		const FString Hint = GM->GetTier() == TEXT("light") ? TEXT("!! FRAMES >250 MS // GPU BELOW TIER LIGHT MINIMUM")
+			: FString::Printf(TEXT("!! FRAMES >250 MS // TRY TIER %s"), GM->GetTier() == TEXT("extreme") ? TEXT("STANDARD") : TEXT("LIGHT"));
+		Tile(Canvas, X - 12 * Sc, by - 48 * Sc, 760 * Sc, LH * 1.4f, Back);
+		L(Hint, X, by - 44 * Sc, Am);
+	}
 }
 
 // btop-style SYSMON box: total CPU bar + sparkline, GPU load/VRAM/temp/clock/power, RAM.

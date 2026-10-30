@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.lutzlstein.omabench3d",
   "name": "OmaBench3D",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "Cory Blische",
   "license": "MIT",
   "description": "Run the OmaBench3D UE5 GPU benchmark from a terminal-style panel: pick tests and settings, watch progress, see results and history.",
@@ -19,6 +19,7 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
+      "tier": "auto",
       "appPath": "auto",
       "tests": "T1",
       "resolution": "native",
@@ -44,6 +45,18 @@
         "label": "Tests",
         "defaultValue": "T1",
         "description": "Comma-separated test IDs (T1 for now)."
+      },
+      {
+        "key": "tier",
+        "type": "enum",
+        "label": "Quality tier",
+        "defaultValue": "auto",
+        "options": [
+          "auto",
+          "light",
+          "standard",
+          "extreme"
+        ]
       },
       {
         "key": "resolution",
