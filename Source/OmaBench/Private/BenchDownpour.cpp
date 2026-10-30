@@ -183,11 +183,11 @@ void ABenchGameMode::UpdateDownpour(double T)
 	}
 	if (!Camera) return;
 	// Street-level walk north through the market: Catmull-Rom through (x, y, z) keys, 60 s.
-	static const double Kt[] = { 0, 12, 24, 36, 48, 60 };
-	static const FVector Kp[] = { {300,300,190}, {-150,1900,175}, {350,3500,175}, {-300,5000,160}, {450,6600,185}, {-350,7650,230} };
-	int32 k = 0; while (k < 4 && T > Kt[k + 1]) ++k;
+	static const double Kt[] = { 0, 9.6, 19.2, 28.8, 38.4, 48, 60 };   // ~22% faster, same 60 s
+	static const FVector Kp[] = { {300,300,190}, {-150,1900,175}, {350,3500,175}, {-300,5000,160}, {450,6600,270}, {-350,7650,250}, {-150,9300,240} };
+	int32 k = 0; while (k < 5 && T > Kt[k + 1]) ++k;
 	const double u = (T - Kt[k]) / (Kt[k + 1] - Kt[k]);
-	auto Key = [&](int32 i) { return Kp[FMath::Clamp(i, 0, 5)]; };
+	auto Key = [&](int32 i) { return Kp[FMath::Clamp(i, 0, 6)]; };
 	const FVector P0 = Key(k - 1), P1 = Key(k), P2 = Key(k + 1), P3 = Key(k + 2);
 	const double u2 = u * u, u3 = u2 * u;
 	const FVector Pos = 0.5 * ((2 * P1) + (-P0 + P2) * u + (2 * P0 - 5 * P1 + 4 * P2 - P3) * u2 + (-P0 + 3 * P1 - 3 * P2 + P3) * u3);

@@ -203,7 +203,7 @@ void ABenchGameMode::LoadPalette()
 }
 
 // Camera route waypoints on the street grid (x = k*5000 avenues, y = k*6000 streets).
-static const FVector2D GRoute[] = { {0,-30000}, {0,-12000}, {10000,-12000}, {10000,12000}, {-10000,12000}, {-10000,30000}, {0,30000}, {0,42000} };
+static const FVector2D GRoute[] = { {0,-42000}, {0,-12000}, {10000,-12000}, {10000,12000}, {-10000,12000}, {-10000,30000}, {10000,30000}, {10000,42000} };   // ~1340 m / 60 s
 // Distance from P to the route polyline; OutQ = closest point on it.
 static float RouteDist(const FVector2D& P, FVector2D& OutQ)
 {
@@ -504,7 +504,7 @@ void ABenchGameMode::UpdateCamera(double T)
 	auto PosAt = [&](double uu){ const FVector2D XY = PathAt(float(uu * Len)); return FVector(XY.X, XY.Y, 1900 + 700*FMath::Sin(2*PI*uu*2) + 300*FMath::Sin(2*PI*uu*5)); };
 	const FVector Pos = PosAt(u);
 	// Look ahead along the path (smooths the corner yaw) and bank with the turn rate.
-	const FVector Ahead = PosAt(FMath::Min(1.0, u + 900.0 / Len)) - FVector(0,0,200);
+	const FVector Ahead = PosAt(FMath::Min(1.0, u + 900.0 / Len)) - FVector(0,0,90);   // ~-6 deg: more sky, street reflections stay in frame
 	FVector2D D0, D1; PathAt(float(u * Len), &D0); PathAt(float(u * Len) + 700.f, &D1);
 	const float Turn = FMath::Clamp(float(D0.X * D1.Y - D0.Y * D1.X), -1.f, 1.f);
 	FRotator R = (Ahead - Pos).Rotation(); R.Roll = -14.f * Turn;
@@ -562,6 +562,33 @@ void ABenchGameMode::ApplySky(const FString& Id)
 	SkyMID->SetVectorParameterValue(TEXT("Wind"), b3 ? FLinearColor(0.03f, 0.012f, 0) : FLinearColor(0.012f, 0.004f, 0));
 }
 
+// Distant lightning in every (rainy) scene: deterministic schedule seeded per test, driven by PathTime, so
+// every run sees identical strikes. Only sky-material scalars change (no lights, no extra passes).
+void ABenchGameMode::UpdateLightning(double T)
+{
+	if (!SkyMID || !Camera) return;
+	const FString Id = GetTestId(); const uint32 Seed = Id == TEXT("T2") ? 211u : Id == TEXT("T3") ? 307u : 101u;
+	auto H = [&](int32 k, int32 c) { return FMath::Frac(FMath::Sin(float(k * 37 + c * 101 + Seed) * 12.9898f) * 43758.5453f); };
+	float Flash = 0, Bolt = 0; int32 Ev = -1;
+	for (int32 k = 0; k < 9; ++k)
+	{
+		const double T0 = (Id == TEXT("T3") ? 3.0 : 5.0) + k * (Id == TEXT("T3") ? 6.5 : 8.5) + H(k, 0) * 3.0; const double d = T - T0;
+		if (d < 0 || d > 1.2) continue;
+		Ev = k; const int32 Np = 1 + int32(H(k, 1) * 3.f);                   // 1..3 return strokes
+		for (int32 p = 0; p < Np; ++p) { const double dp = d - p * (0.09 + 0.08 * H(k, 2 + p)); if (dp >= 0) Flash += float(FMath::Exp(-dp * 9.0) * (p == 0 ? 1.0 : 0.7)); }
+		Bolt = d < 0.22 || (Np > 1 && d > 0.1 && d < 0.26) ? 1.f : 0.f;
+		Flash *= 0.6f + 0.4f * H(k, 6);
+	}
+	SkyMID->SetScalarParameterValue(TEXT("Flash"), Flash * (Id == TEXT("T3") ? 1.6f : 1.2f));
+	SkyMID->SetScalarParameterValue(TEXT("Bolt"), Bolt);
+	if (Ev >= 0)
+	{
+		const float Yaw = FMath::DegreesToRadians(Camera->GetActorRotation().Yaw + (H(Ev, 7) - 0.5f) * 80.f);   // inside the view, off-centre
+		SkyMID->SetScalarParameterValue(TEXT("BoltAz"), FMath::Atan2(FMath::Sin(Yaw), FMath::Cos(Yaw)));
+		SkyMID->SetScalarParameterValue(TEXT("BoltSeed"), float(Ev * 17 + Seed % 13));
+	}
+}
+
 void ABenchGameMode::ActivateTest(int32 Index)
 {
 	CurrentTest = Index;
@@ -574,8 +601,8 @@ void ABenchGameMode::ActivateTest(int32 Index)
 	if (CityFog)
 	{
 		const bool b3 = Id == TEXT("T3");   // T3 brings its own smoke/steam; keep the global haze lighter there
-		CityFog->SetFogDensity(b3 ? 0.05f : 0.2f); CityFog->SetVolumetricFogExtinctionScale(b3 ? 0.8f : 3.0f);
-		CityFog->SecondFogData.FogDensity = b3 ? 0.15f : 1.1f; CityFog->MarkRenderStateDirty();
+		CityFog->SetFogDensity(b3 ? 0.035f : 0.2f); CityFog->SetFogHeightFalloff(b3 ? 1.9f : 1.1f); CityFog->SetVolumetricFogExtinctionScale(b3 ? 0.8f : 3.0f);
+		CityFog->SecondFogData.FogDensity = b3 ? 0.12f : 1.1f; CityFog->MarkRenderStateDirty();
 	}
 	ApplySky(Id);
 	if (RtConfigs.Num() <= Index) RtConfigs.SetNum(Index + 1);
@@ -682,6 +709,7 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	if (GetTestId() == TEXT("T2")) UpdateSkyline(FMath::Fmod(PathTime, 60.0));
 	else if (GetTestId() == TEXT("T3")) UpdateDownpour(FMath::Fmod(PathTime, 60.0));
 	else { UpdateCamera(FMath::Fmod(PathTime, 60.0)); UpdateCars(PathTime); }
+	UpdateLightning(FMath::Fmod(PathTime, 60.0));
 	if (Phase == EBenchPhase::Warmup)
 	{
 		if (PhaseTime >= WarmupS) { if (SysMon) SysMon->SetRecording(true); Phase = EBenchPhase::Running; PhaseTime = 0; PathTime = 0; DevShotNext = 0; CurrentFrames.Reset(); CurrentFrames.Reserve(100000); }

@@ -209,11 +209,11 @@ void ABenchGameMode::UpdateSkyline(double T)
 	}
 	// Camera: Catmull-Rom through roof-local keys (x, y, height above roof).
 	if (!Camera) return;
-	static const double Kt[] = { 0, 14, 28, 40, 50, 60 };
-	static const FVector Kp[] = { {300,-2750,420}, {250,-1000,320}, {-350,350,300}, {-1000,1250,380}, {-2100,1450,650}, {-3300,1500,450} };   // lane between HVAC row and water tank; verified by tools/campathcheck.sh
-	int32 k = 0; while (k < 4 && T > Kt[k + 1]) ++k;
+	static const double Kt[] = { 0, 11, 22, 32, 40, 48, 60 };   // ~22% faster than the 0.4.0 path, same 60 s
+	static const FVector Kp[] = { {300,-2750,420}, {250,-1000,320}, {-350,350,300}, {-1000,1250,380}, {-2100,1450,650}, {-3300,1500,450}, {-3000,-300,380} };   // lane between HVAC row and water tank; verified by tools/campathcheck.sh
+	int32 k = 0; while (k < 5 && T > Kt[k + 1]) ++k;
 	const double u = (T - Kt[k]) / (Kt[k + 1] - Kt[k]);
-	auto Key = [&](int32 i) { i = FMath::Clamp(i, 0, 5); return FVector(RoofCentre.X, RoofCentre.Y, RoofTop) + Kp[i]; };
+	auto Key = [&](int32 i) { i = FMath::Clamp(i, 0, 6); return FVector(RoofCentre.X, RoofCentre.Y, RoofTop) + Kp[i]; };
 	const FVector P0 = Key(k - 1), P1 = Key(k), P2 = Key(k + 1), P3 = Key(k + 2);
 	const double u2 = u * u, u3 = u2 * u;
 	const FVector Pos = 0.5 * ((2 * P1) + (-P0 + P2) * u + (2 * P0 - 5 * P1 + 4 * P2 - P3) * u2 + (-P0 + 3 * P1 - 3 * P2 + P3) * u3);

@@ -51,6 +51,10 @@ def scalar(m, n, d, x, y):
 F2, F3, F1 = unreal.CustomMaterialOutputType.CMOT_FLOAT2, unreal.CustomMaterialOutputType.CMOT_FLOAT3, unreal.CustomMaterialOutputType.CMOT_FLOAT1
 DEF = {"Base": "/Engine/EngineResources/DefaultTexture", "ARM": "/Engine/EngineResources/WhiteSquareTexture",
        "Normal": "/Engine/EngineMaterials/DefaultNormal", "Mask": "/Engine/EngineResources/WhiteSquareTexture"}
+# Sampler defaults must match their sampler type (sRGB engine white on a Masks/Grayscale sampler fails the
+# material compile -> default material in cooked builds), so use real imported linear textures of each kind.
+def first(k): return next((tex(v[k]) for v in SLOTS.values() if v.get(k) and tex(v[k])), None)
+DEFT = {"Base": first("base"), "ARM": first("arm"), "Normal": first("nor"), "Mask": first("mask")}
 def master(name, world=False, masked=False):
     m = fresh(name)
     if masked:
@@ -66,10 +70,10 @@ def master(name, world=False, masked=False):
         L.connect_material_expressions(tc, "", uv, "UV"); L.connect_material_expressions(scalar(m, "Tile", 1.0, -1600, 300), "", uv, "T")
     S = {}
     for i, (n, st) in enumerate((("Base", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR), ("ARM", unreal.MaterialSamplerType.SAMPLERTYPE_MASKS),
-                                 ("Normal", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL), ("Mask", unreal.MaterialSamplerType.SAMPLERTYPE_GRAYSCALE))):
+                                 ("Normal", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL), ("Mask", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_GRAYSCALE))):
         if n == "Mask" and not masked: continue
         e = ex(m, unreal.MaterialExpressionTextureSampleParameter2D, -1000, i * 260); e.set_editor_property("parameter_name", n)
-        e.set_editor_property("texture", unreal.load_asset(DEF[n])); e.set_editor_property("sampler_type", st)
+        e.set_editor_property("texture", DEFT[n] or unreal.load_asset(DEF[n])); e.set_editor_property("sampler_type", st)
         L.connect_material_expressions(uv, "", e, "UVs"); S[n] = e
     tint = ex(m, unreal.MaterialExpressionVectorParameter, -1000, -260); tint.set_editor_property("parameter_name", "Tint"); tint.set_editor_property("default_value", unreal.LinearColor(1, 1, 1, 1))
     wet = scalar(m, "Wet", 0.0, -1000, 1100); rm = scalar(m, "RoughMul", 1.0, -1000, 1200)

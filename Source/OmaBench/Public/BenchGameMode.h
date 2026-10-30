@@ -81,6 +81,7 @@ private:
 	UPROPERTY() TObjectPtr<AActor> RainHost;
 	UPROPERTY() TObjectPtr<class UExponentialHeightFogComponent> CityFog;
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> SkyMID;   // night sky dome (per-test cloud/glow params)
+	void UpdateLightning(double T);
 	void ApplySky(const FString& Id);
 	struct FDrone { TObjectPtr<AActor> Actor; TObjectPtr<class USpotLightComponent> Search; TObjectPtr<class UPointLightComponent> NavL, NavR; int32 Index; };
 	TArray<FDrone> Drones;   // actors are also held (GC-safe) via T3Actors
