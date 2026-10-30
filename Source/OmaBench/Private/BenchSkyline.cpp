@@ -210,7 +210,7 @@ void ABenchGameMode::UpdateSkyline(double T)
 	// Camera: Catmull-Rom through roof-local keys (x, y, height above roof).
 	if (!Camera) return;
 	static const double Kt[] = { 0, 14, 28, 40, 50, 60 };
-	static const FVector Kp[] = { {1350,-2300,330}, {750,-900,240}, {-350,350,280}, {-1150,1250,360}, {-2100,1450,650}, {-3300,1500,450} };
+	static const FVector Kp[] = { {300,-2750,420}, {250,-1000,320}, {-350,350,300}, {-1000,1250,380}, {-2100,1450,650}, {-3300,1500,450} };   // lane between HVAC row and water tank; verified by tools/campathcheck.sh
 	int32 k = 0; while (k < 4 && T > Kt[k + 1]) ++k;
 	const double u = (T - Kt[k]) / (Kt[k + 1] - Kt[k]);
 	auto Key = [&](int32 i) { i = FMath::Clamp(i, 0, 5); return FVector(RoofCentre.X, RoofCentre.Y, RoofTop) + Kp[i]; };

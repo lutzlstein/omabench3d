@@ -184,7 +184,7 @@ void ABenchGameMode::UpdateDownpour(double T)
 	if (!Camera) return;
 	// Street-level walk north through the market: Catmull-Rom through (x, y, z) keys, 60 s.
 	static const double Kt[] = { 0, 12, 24, 36, 48, 60 };
-	static const FVector Kp[] = { {300,300,190}, {-450,1900,165}, {350,3500,175}, {-300,5000,160}, {450,6600,185}, {-100,7700,230} };
+	static const FVector Kp[] = { {300,300,190}, {-150,1900,175}, {350,3500,175}, {-300,5000,160}, {450,6600,185}, {-350,7650,230} };
 	int32 k = 0; while (k < 4 && T > Kt[k + 1]) ++k;
 	const double u = (T - Kt[k]) / (Kt[k + 1] - Kt[k]);
 	auto Key = [&](int32 i) { return Kp[FMath::Clamp(i, 0, 5)]; };

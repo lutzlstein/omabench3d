@@ -95,6 +95,7 @@ private:
 	UPROPERTY() TArray<TObjectPtr<AActor>> Traffic;
 	TArray<FCarLane> TrafficLanes;
 	void ActivateTest(int32 Index);
+	int32 RunCamPathCheck(float Clearance);
 	TSharedRef<class FJsonObject> ApplyRtConfig(const FString& Id);
 	TArray<FString> TestIds; int32 CurrentTest = 0;
 	TArray<TArray<TArray<float>>> TestPassFrames;

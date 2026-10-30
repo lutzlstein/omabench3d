@@ -607,6 +607,13 @@ void ABenchGameMode::BeginPlay()
 			BuildDownpour();
 			for (AActor* A : Snap()) if (!Pre.Contains(A)) T3Actors.Add(A);
 		}
+		float CamCheck = 0;
+		if (FParse::Param(FCommandLine::Get(), TEXT("campathcheck")) || FParse::Value(FCommandLine::Get(), TEXT("-campathcheck="), CamCheck))
+		{
+			ExitCode = RunCamPathCheck(CamCheck > 0 ? CamCheck : 150.f);
+			Phase = EBenchPhase::Done; bAborted = true; bExitRequested = true; RunId.Empty();
+			FPlatformMisc::RequestExitWithStatus(false, ExitCode); return;
+		}
 		ActivateTest(0);
 	}
 	if (!bNoSysmon) SysMon = MakeShared<FSysMon>();
