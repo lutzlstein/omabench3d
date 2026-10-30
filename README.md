@@ -5,11 +5,11 @@ UE5 GPU benchmark (T1 City Night, T2 Skyline, T3 Downpour) plus an Omarchy shell
 The UE project/module keep the internal name `OmaBench` (packaged launcher `Packaged/Linux/OmaBench.sh`).
 
 
-![omabench3d: T3 Downpour running windowed next to the panel on an Omarchy desktop](docs/screenshots/desktop-panel-downpour.png)
+![omabench3d: the OmaBench3D panel next to a windowed 1920x1080 T2 Skyline run on Omarchy](preview.png)
 
-| T1 City Night | T2 Skyline (rooftop) | T2 Skyline (wide) |
+| Panel | Fullscreen T1 City Night (2560x1600, HUD) | Windowed T2 Skyline (1920x1080) |
 |---|---|---|
-| ![T1 City Night](docs/screenshots/city-night.png) | ![T2 Skyline rooftop](docs/screenshots/skyline-rooftop.png) | ![T2 Skyline wide](docs/screenshots/skyline-wide.png) |
+| ![Panel](docs/screenshots/panel-open.png) | ![Fullscreen T1](docs/screenshots/fullscreen-t1.png) | ![Windowed T2](docs/screenshots/windowed-t2.png) |
 
 ## Install (Omarchy 4)
 
@@ -22,10 +22,19 @@ omarchy-shell shell rescanPlugins                                      # only if
 ```
 
 Then click the barbell icon → **INSTALL APP**: the plugin downloads `omabench3d-linux-x86_64.tar.zst` from the latest
-GitHub Release, checks its `.sha256`, and unpacks it into `~/.local/share/omabench3d/app` (~660 MB). CLI equivalent:
+GitHub Release, checks its `.sha256`, and unpacks it into `~/.local/share/omabench3d/app` (~415 MB download, ~730 MB unpacked). CLI equivalent:
 `~/.config/omarchy/plugins/io.github.lutzlstein.omabench3d/plugin/bin/omabench3d-ctl install-app`
 (`OMABENCH3D_RELEASE_URL=file:///path/to/omabench3d-linux-x86_64.tar.zst` installs a local tarball).
 `appPath` defaults to `auto` (installed app, else a local `Packaged/` dev build).
+
+## Remove
+
+```bash
+omarchy plugin remove io.github.lutzlstein.omabench3d   # removes the plugin and its bar entry
+rm -rf ~/.local/share/omabench3d                         # optional: the downloaded app and saved results
+```
+
+Runs with your normal user permissions; it only writes under `~/.local/share/omabench3d` and its own plugin settings.
 
 Maintainers: `tools/package.sh` builds `Packaged/`, `tools/release.sh` builds `dist/*.tar.zst` + `.sha256`,
 `tools/sync-manifest.sh` keeps the root `manifest.json` in step with `plugin/manifest.json`.

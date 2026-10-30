@@ -44,7 +44,7 @@
         "type": "string",
         "label": "Tests",
         "defaultValue": "T1",
-        "description": "Comma-separated test IDs (T1 for now)."
+        "description": "Comma-separated test IDs (T1, T2, T3)."
       },
       {
         "key": "tier",
