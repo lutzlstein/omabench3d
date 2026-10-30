@@ -2,6 +2,9 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bash -n "$root/bin/omabench3d-ctl"
+# isolate from the real data/run dirs so a leftover pidfile or live run can't affect results
+sandbox="$(mktemp -d)"; trap 'rm -rf "$sandbox"' EXIT
+export XDG_DATA_HOME="$sandbox/data" XDG_RUNTIME_DIR="$sandbox/run"; mkdir -p "$XDG_RUNTIME_DIR"
 # status must emit valid JSON even when the app is missing
 "$root/bin/omabench3d-ctl" status /nonexistent | python3 -m json.tool >/dev/null
 "$root/bin/omabench3d-ctl" summary | python3 -m json.tool >/dev/null
@@ -24,5 +27,10 @@ a="$(OMABENCH3D_DRYRUN=1 "$root/bin/omabench3d-ctl" start "$fake" T1,T2,T3 1920x
 [[ " $a " != *" -quick "* && " $a " != *"-duration="* ]] || { echo "non-quick got quick args: $a"; exit 1; }
 rm -rf "$(dirname "$fake")"
 "$root/bin/omabench3d-ctl" install-app 'http://bad' >/dev/null 2>&1 && { echo "install-app accepted bad url"; exit 1; }
+# font-path: stable content-addressed copy, idempotent, rejects non-ttf
+font="$root/$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["entryPoints"]["barWidget"])' "$root/../manifest.json" | sed 's#^plugin/##; s#/[^/]*$##')/fonts/BitcountPropSingle-Medium.ttf"
+f1="$("$root/bin/omabench3d-ctl" font-path "$font")"; f2="$("$root/bin/omabench3d-ctl" font-path "$font")"
+[[ "$f1" == "$XDG_DATA_HOME/omabench3d/fonts/"*.ttf && "$f1" == "$f2" ]] && cmp -s "$font" "$f1" || { echo "font-path bad: $f1"; exit 1; }
+"$root/bin/omabench3d-ctl" font-path /etc/passwd >/dev/null 2>&1 && { echo "font-path accepted non-ttf"; exit 1; }
 if command -v omarchy >/dev/null 2>&1; then omarchy plugin validate "$root/.."; fi
 printf 'All portable plugin checks passed.\n'
