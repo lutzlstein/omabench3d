@@ -27,6 +27,9 @@ GitHub Release, checks its `.sha256`, and unpacks it into `~/.local/share/omaben
 (`OMABENCH3D_RELEASE_URL=file:///path/to/omabench3d-linux-x86_64.tar.zst` installs a local tarball).
 `appPath` defaults to `auto` (installed app, else a local `Packaged/` dev build).
 
+New installs land in the centre of the bar (`defaultSection`). Panel settings are mirrored to `~/.local/share/omabench3d/settings.json`
+and restored automatically after a remove/re-add (settings already present in `shell.json` always win).
+
 ## Remove
 
 ```bash
