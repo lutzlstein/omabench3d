@@ -58,8 +58,15 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, ui7/fonts/OFL.txt), loaded from the plugin folder only.
-  FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
+  // Bitcount Prop Single (OFL, ui8/fonts/OFL.txt). Qt keeps app fonts registered by family for the
+  // shell's lifetime and reads the file lazily, so loading it straight from the plugin folder breaks
+  // (garbled glyphs) once a reinstall deletes/replaces that file. Load a content-addressed copy instead.
+  property string fontSource: ""
+  FontLoader { id: bitcount; source: root.fontSource }
+  property Process fontProc: Process {
+    command: [root.ctl, "font-path", String(Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf")).replace(/^file:\/\//, "")]
+    stdout: StdioCollector { onStreamFinished: { const p = String(text).trim(); if (p.startsWith("/")) root.fontSource = "file://" + p } }
+  }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
     ? Math.max(0, Math.min(100, Math.round(100 * progress.elapsedS / progress.totalS))) : 0
@@ -105,7 +112,7 @@ Panel {
   }
   property bool settingsSynced: false
   onSettingsChanged: if (!settingsSynced) settingsSyncTimer.restart()
-  Component.onCompleted: settingsSyncTimer.restart()
+  Component.onCompleted: { fontProc.running = true; settingsSyncTimer.restart() }
   // Held in properties (not children): Panel's default property is the lazily created popup content.
   property Timer settingsSyncTimer: Timer { interval: 1500; onTriggered: { root.settingsSynced = true; root.settingsLoadProc.running = true } }
   function cycle(list, cur, dir) {

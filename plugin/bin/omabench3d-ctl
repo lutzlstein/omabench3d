@@ -253,6 +253,12 @@ case "$cmd" in
     out="$(jq -c "$settings_filter" <<<"${2:-}" 2>/dev/null)" || { echo "bad json" >&2; exit 2; }
     mkdir -p "$data" && tmp="$(mktemp "$data/.settings.XXXXXX")" && printf '%s\n' "$out" > "$tmp" && mv -f "$tmp" "$settingsfile"
     ;;
+  font-path)   # <src.ttf>: stable content-addressed copy, so the shell never holds a deleted/replaced font file
+    src="${2:-}"; [[ -f "$src" && "$src" == *.ttf && $(stat -c %s "$src") -le 4194304 ]] || exit 2
+    sum="$(sha256sum "$src" | cut -c1-16)"; dst="$data/fonts/$(basename "$src" .ttf)-$sum.ttf"
+    if [[ ! -f "$dst" ]]; then mkdir -p "$data/fonts" && tmp="$(mktemp "$data/fonts/.f.XXXXXX")" && cp "$src" "$tmp" && mv -f "$tmp" "$dst" || exit 1; fi
+    printf '%s\n' "$dst"
+    ;;
   settings-load)
     if [[ -f "$settingsfile" && $(stat -c %s "$settingsfile") -le 8192 ]] && command -v jq >/dev/null; then
       jq -c "$settings_filter" "$settingsfile" 2>/dev/null || echo '{}'
