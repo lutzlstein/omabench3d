@@ -1,3 +1,4 @@
+#include "UnrealClient.h"
 #include "BenchGameMode.h"
 #include "BenchHUD.h"
 #include "Engine/LocalFogVolume.h"
@@ -120,6 +121,7 @@ void ABenchGameMode::ParseArgs()
 	PixelSize = FMath::Max(1, FMath::RoundToInt(ResY / 360.f));
 	{ FString T; if (FParse::Value(Cmd, TEXT("-tier="), T)) Tier = TierCfg(T.ToLower()).Name; }
 	bProfileGpu = FParse::Param(Cmd, TEXT("profilegpu"));
+	FParse::Value(Cmd, TEXT("-devshots="), DevShotDir);   // dev: game-rendered frames every 5 s of each test (use with -RenderOffscreen)
 	FParse::Value(Cmd, TEXT("-pixel="), PixelSize); PixelSize = FMath::Clamp(PixelSize, 0, 16);
 	FString Tests; FParse::Value(Cmd, TEXT("-tests="), Tests, /*bShouldStopOnSeparator*/ false);
 	{
@@ -311,8 +313,24 @@ void ABenchGameMode::BuildScene()
 	Sun->GetLightComponent()->SetMobility(EComponentMobility::Movable);
 	Sun->GetLightComponent()->SetIntensity(0.25f); Sun->GetLightComponent()->SetLightColor(Accent);
 	Cast<UDirectionalLightComponent>(Sun->GetLightComponent())->bAtmosphereSunLight = true;
-	AActor* Sky = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, P);
-	USkyAtmosphereComponent* Atmo = NewObject<USkyAtmosphereComponent>(Sky, TEXT("Atmo")); Sky->SetRootComponent(Atmo); Atmo->RegisterComponent();
+	// Night sky dome (replaces the physical atmosphere, which read as pure black at night): overcast zenith,
+	// city light-pollution glow on the horizon, low rain-cloud deck lit from below. One unlit pass; the
+	// noise octaves scale with tier (Light 2 / Standard 4 / Extreme 5). Not in shadows, Lumen or RT scenes.
+	if (UMaterialInterface* SkyM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/OmaBench/Materials/M_NightSky.M_NightSky")))
+	{
+		AActor* Sky = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, P);
+		UStaticMeshComponent* Dome = NewObject<UStaticMeshComponent>(Sky, TEXT("SkyDome"));
+		Dome->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere")));
+		Dome->SetMobility(EComponentMobility::Static);
+		Dome->SetWorldScale3D(FVector(300000.f));   // 150 km radius, encloses every test
+		Dome->SetCollisionEnabled(ECollisionEnabled::NoCollision); Dome->SetCastShadow(false);
+		Dome->bAffectDistanceFieldLighting = false; Dome->bAffectDynamicIndirectLighting = false; Dome->SetVisibleInRayTracing(false);
+		Dome->bVisibleInRealTimeSkyCaptures = true; Dome->bNeverDistanceCull = true;
+		SkyMID = UMaterialInstanceDynamic::Create(SkyM, this);
+		SkyMID->SetScalarParameterValue(TEXT("Octaves"), Tier == TEXT("light") ? 2.f : Tier == TEXT("extreme") ? 5.f : 4.f);
+		{ float G = 3.f; FParse::Value(FCommandLine::Get(), TEXT("-skygain="), G); SkyMID->SetScalarParameterValue(TEXT("Intensity"), G); }   // dev knob
+		Dome->SetMaterial(0, SkyMID); Sky->SetRootComponent(Dome); Dome->RegisterComponent();
+	}
 	ASkyLight* SkyL = W->SpawnActor<ASkyLight>(ASkyLight::StaticClass(), FTransform::Identity, P);
 	SkyL->GetLightComponent()->SetMobility(EComponentMobility::Movable); SkyL->GetLightComponent()->bRealTimeCapture = true;
 	SkyL->GetLightComponent()->SetIntensity(0.4f); SkyL->GetLightComponent()->RecaptureSky();
@@ -532,6 +550,18 @@ TSharedRef<FJsonObject> ABenchGameMode::ApplyRtConfig(const FString& Id)
 	return O;
 }
 
+// Per-test sky mood: T1 moderate glow / broken overcast, T2 (rooftop, sees the most sky) a stronger
+// glow so the towers silhouette, T3 (downpour) a solid low deck.
+void ABenchGameMode::ApplySky(const FString& Id)
+{
+	if (!SkyMID) return;
+	const bool b2 = Id == TEXT("T2"), b3 = Id == TEXT("T3");
+	SkyMID->SetScalarParameterValue(TEXT("Glow"), b2 ? 0.08f : b3 ? 0.05f : 0.06f);
+	SkyMID->SetScalarParameterValue(TEXT("CloudCover"), b3 ? 0.22f : b2 ? 0.36f : 0.32f);
+	SkyMID->SetScalarParameterValue(TEXT("CloudScale"), b3 ? 0.7f : 0.9f);
+	SkyMID->SetVectorParameterValue(TEXT("Wind"), b3 ? FLinearColor(0.03f, 0.012f, 0) : FLinearColor(0.012f, 0.004f, 0));
+}
+
 void ABenchGameMode::ActivateTest(int32 Index)
 {
 	CurrentTest = Index;
@@ -547,6 +577,7 @@ void ABenchGameMode::ActivateTest(int32 Index)
 		CityFog->SetFogDensity(b3 ? 0.05f : 0.2f); CityFog->SetVolumetricFogExtinctionScale(b3 ? 0.8f : 3.0f);
 		CityFog->SecondFogData.FogDensity = b3 ? 0.15f : 1.1f; CityFog->MarkRenderStateDirty();
 	}
+	ApplySky(Id);
 	if (RtConfigs.Num() <= Index) RtConfigs.SetNum(Index + 1);
 	RtConfigs[Index] = ApplyRtConfig(Id);
 	PathTime = 0;
@@ -646,10 +677,15 @@ void ABenchGameMode::Tick(float DeltaSeconds)
 	else { UpdateCamera(FMath::Fmod(PathTime, 60.0)); UpdateCars(PathTime); }
 	if (Phase == EBenchPhase::Warmup)
 	{
-		if (PhaseTime >= WarmupS) { if (SysMon) SysMon->SetRecording(true); Phase = EBenchPhase::Running; PhaseTime = 0; PathTime = 0; CurrentFrames.Reset(); CurrentFrames.Reserve(100000); }
+		if (PhaseTime >= WarmupS) { if (SysMon) SysMon->SetRecording(true); Phase = EBenchPhase::Running; PhaseTime = 0; PathTime = 0; DevShotNext = 0; CurrentFrames.Reset(); CurrentFrames.Reserve(100000); }
 	}
 	else if (Phase == EBenchPhase::Running)
 	{
+		if (!DevShotDir.IsEmpty() && PathTime >= DevShotNext)
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::Combine(DevShotDir, FString::Printf(TEXT("%s_%02d.png"), *GetTestId(), DevShotN++)), false, false);
+			DevShotNext = PathTime + 5.0;
+		}
 		if (CurrentFrames.Num() < 2000000) CurrentFrames.Add(float(Dt * 1000.0));
 		// Safety hint (never aborts): ~3 s worth of >250 ms frames without recovering -> suggest a lower tier.
 		SlowAccum = Dt > 0.25 ? SlowAccum + Dt : FMath::Max(0.0, SlowAccum - Dt);

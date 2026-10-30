@@ -80,6 +80,8 @@ private:
 	UPROPERTY() TArray<TObjectPtr<class UNiagaraComponent>> DownpourFx;
 	UPROPERTY() TObjectPtr<AActor> RainHost;
 	UPROPERTY() TObjectPtr<class UExponentialHeightFogComponent> CityFog;
+	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> SkyMID;   // night sky dome (per-test cloud/glow params)
+	void ApplySky(const FString& Id);
 	struct FDrone { TObjectPtr<AActor> Actor; TObjectPtr<class USpotLightComponent> Search; TObjectPtr<class UPointLightComponent> NavL, NavR; int32 Index; };
 	TArray<FDrone> Drones;   // actors are also held (GC-safe) via T3Actors
 	UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> FailSign;
@@ -115,7 +117,7 @@ private:
 	bool bQuick = false;
 	int32 ResX = 2560, ResY = 1440;
 	bool bFullscreen = false;
-	FString Tier = TEXT("standard"); bool bSlowHint = false, bProfileGpu = false; double SlowAccum = 0; int32 ProfiledTest = -1; float RenderPct = 100;
+	FString Tier = TEXT("standard"); bool bSlowHint = false, bProfileGpu = false; FString DevShotDir; int32 DevShotN = 0; double DevShotNext = 0; double SlowAccum = 0; int32 ProfiledTest = -1; float RenderPct = 100;
 	FString MonitorName, MonitorHz, ResultsPath, ProgressPath, RunId, StartedAt;
 	bool bExitRequested = false, bNoHud = false, bNoPostFx = false;
 	double LiveFps = 0.0, FpsAccumT = 0.0, DoneHold = 0.0; int32 FpsAccumN = 0; int32 ExitCode = 0; int32 PixelSize = 4;
