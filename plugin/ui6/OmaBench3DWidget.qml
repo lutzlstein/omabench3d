@@ -86,7 +86,11 @@ Panel {
     return o
   }
   function persist() { Quickshell.execDetached([root.ctl, "settings-save", JSON.stringify(ownSettings())]) }
-  Component.onCompleted: settingsLoadProc.running = true
+  // The shell assigns `settings` after creation; wait until it has settled, then sync once.
+  property bool settingsSynced: false
+  onSettingsChanged: if (!settingsSynced) settingsSyncTimer.restart()
+  Component.onCompleted: settingsSyncTimer.restart()
+  Timer { id: settingsSyncTimer; interval: 1500; onTriggered: { root.settingsSynced = true; settingsLoadProc.running = true } }
   function cycle(list, cur, dir) {
     let i = list.indexOf(cur); if (i < 0) i = 0
     return list[(i + dir + list.length) % list.length]
