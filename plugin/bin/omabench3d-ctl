@@ -8,6 +8,7 @@
 #   omabench3d-ctl monitors    -> Hyprland outputs with refresh rates (JSON)
 #   omabench3d-ctl stop
 #   omabench3d-ctl install-app [url]  -> download+verify release into ~/.local/share/omabench3d/app
+#   omabench3d-ctl settings-save <json> / settings-load  -> the plugin's own settings copy (survives remove/re-add)
 set -uo pipefail
 
 data="${XDG_DATA_HOME:-$HOME/.local/share}/omabench3d"
@@ -18,6 +19,12 @@ logfile="$data/last-run.log"
 
 appdir="$data/app"
 installfile="$data/install.json"
+settingsfile="$data/settings.json"
+# allowlisted panel settings, type-checked; anything else is dropped
+settings_filter='with_entries(select(
+  (.key|IN("appPath","tests","resolution","monitor","pixel","theme","tier")) and (.value|type)=="string" and (.value|length)<=256
+  or (.key|IN("fullscreen","quick","hud","sysmon")) and (.value|type)=="boolean"
+  or .key=="passes" and (.value|type)=="number" and .value>=1 and .value<=5))'
 release_url="${OMABENCH3D_RELEASE_URL:-https://github.com/lutzlstein/omabench3d/releases/latest/download/omabench3d-linux-x86_64.tar.zst}"
 
 # "auto" (default): the app installed by install-app, else a local dev build.
@@ -240,6 +247,17 @@ case "$cmd" in
   install-app)   # [url]  foreground; the panel runs it detached and polls status.install
     install_app "${2:-}"
     ;;
+  settings-save)   # <json>: atomically store the allowlisted subset
+    command -v jq >/dev/null || exit 3
+    [[ ${#2} -le 8192 ]] || { echo "too large" >&2; exit 2; }
+    out="$(jq -c "$settings_filter" <<<"${2:-}" 2>/dev/null)" || { echo "bad json" >&2; exit 2; }
+    mkdir -p "$data" && tmp="$(mktemp "$data/.settings.XXXXXX")" && printf '%s\n' "$out" > "$tmp" && mv -f "$tmp" "$settingsfile"
+    ;;
+  settings-load)
+    if [[ -f "$settingsfile" && $(stat -c %s "$settingsfile") -le 8192 ]] && command -v jq >/dev/null; then
+      jq -c "$settings_filter" "$settingsfile" 2>/dev/null || echo '{}'
+    else echo '{}'; fi
+    ;;
   stop)
     pid="$(running_pid)" || { echo "not running"; exit 0; }
     kill -TERM -- "-$pid" 2>/dev/null
@@ -247,5 +265,5 @@ case "$cmd" in
     kill -0 "$pid" 2>/dev/null && kill -KILL -- "-$pid" 2>/dev/null
     rm -f "$pidfile"; echo stopped
     ;;
-  *) echo "usage: omabench3d-ctl status|start|stop|install-app" >&2; exit 2 ;;
+  *) echo "usage: omabench3d-ctl status|start|stop|install-app|settings-save|settings-load" >&2; exit 2 ;;
 esac

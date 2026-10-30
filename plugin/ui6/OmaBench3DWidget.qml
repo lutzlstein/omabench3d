@@ -58,7 +58,7 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, ui5/fonts/OFL.txt), loaded from the plugin folder only.
+  // Bitcount Prop Single (OFL, ui6/fonts/OFL.txt), loaded from the plugin folder only.
   FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
@@ -74,7 +74,19 @@ Panel {
   function save(patch) {
     root.settings = Object.assign({}, root.settings, patch)
     if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
+    persist()
   }
+  // Own copy of the settings in ~/.local/share/omabench3d/settings.json so they survive
+  // `omarchy plugin remove` + re-add. Restored only when the shell entry has none of ours;
+  // explicit shell settings always win (and are mirrored into the copy).
+  readonly property var settingKeys: ["appPath","tests","resolution","monitor","pixel","theme","tier","fullscreen","quick","hud","sysmon","passes"]
+  function ownSettings() {
+    const o = {}; const s = root.settings || {}
+    for (const k of settingKeys) if (s[k] !== undefined && s[k] !== null) o[k] = s[k]
+    return o
+  }
+  function persist() { Quickshell.execDetached([root.ctl, "settings-save", JSON.stringify(ownSettings())]) }
+  Component.onCompleted: settingsLoadProc.running = true
   function cycle(list, cur, dir) {
     let i = list.indexOf(cur); if (i < 0) i = 0
     return list[(i + dir + list.length) % list.length]
@@ -431,6 +443,18 @@ Panel {
     onTriggered: root.refresh()
   }
 
+  Process {
+    id: settingsLoadProc
+    command: [root.ctl, "settings-load"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        let stored = {}
+        try { stored = JSON.parse(String(text).slice(0, 8192)) || {} } catch (e) { stored = {} }
+        if (Object.keys(root.ownSettings()).length > 0) root.persist()          // explicit shell settings: keep, mirror
+        else if (Object.keys(stored).length > 0) root.save(stored)              // fresh entry: restore our copy
+      }
+    }
+  }
   Process {
     id: statusProc
     command: [root.ctl, "status", root.appPath]

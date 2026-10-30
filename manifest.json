@@ -10,14 +10,14 @@
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "plugin/ui5/OmaBench3DWidget.qml"
+    "barWidget": "plugin/ui6/OmaBench3DWidget.qml"
   },
   "barWidget": {
     "displayName": "OmaBench3D",
     "description": "Benchmark panel: tests, config, run/abort with progress, results history",
     "category": "Developer Tools",
     "allowMultiple": false,
-    "defaultSection": "right",
+    "defaultSection": "center",
     "defaults": {
       "tier": "auto",
       "appPath": "auto",
