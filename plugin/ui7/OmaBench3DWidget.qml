@@ -58,7 +58,7 @@ Panel {
   readonly property color fg: Commons.Color.popups.text
   readonly property color ac: Commons.Color.accent
   readonly property color dim: Commons.Color.muted
-  // Bitcount Prop Single (OFL, ui6/fonts/OFL.txt), loaded from the plugin folder only.
+  // Bitcount Prop Single (OFL, ui7/fonts/OFL.txt), loaded from the plugin folder only.
   FontLoader { id: bitcount; source: Qt.resolvedUrl("fonts/BitcountPropSingle-Medium.ttf") }
   readonly property string mono: bitcount.status === FontLoader.Ready ? bitcount.name : Style.font.family
   readonly property int pct: (benchState === "running" && progress && progress.totalS > 0)
@@ -97,6 +97,11 @@ Panel {
         else if (Object.keys(stored).length > 0) root.save(stored)              // fresh entry: restore our copy
       }
     }
+  }
+  // Launch via a Process so we know it succeeded; then dismiss the panel so it never overlays the
+  // benchmark window (progress stays on the bar icon). Root property: panel content is lazy.
+  property Process startProc: Process {
+    onExited: function(code) { if (code === 0) root.close(); else { root.benchState = "error"; root.refresh() } }
   }
   property bool settingsSynced: false
   onSettingsChanged: if (!settingsSynced) settingsSyncTimer.restart()
@@ -200,8 +205,9 @@ Panel {
     } else {
       benchState = "starting"
       startRequestedAt = Date.now()
-      Quickshell.execDetached([ctl, "start", appPath, selectedTests().join(",") || "T1", resolution, String(passes),
-        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor, pixel, hud ? "1" : "0", theme, sysmon ? "1" : "0", tier === "auto" ? autoTier : tier])
+      startProc.command = [ctl, "start", appPath, selectedTests().join(",") || "T1", resolution, String(passes),
+        fullscreen ? "1" : "0", quick ? "1" : "0", "", "", monitor, pixel, hud ? "1" : "0", theme, sysmon ? "1" : "0", tier === "auto" ? autoTier : tier]
+      startProc.running = true
     }
     pollTimer.restart()
   }
