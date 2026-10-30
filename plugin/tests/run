@@ -18,6 +18,15 @@ assert m == t, "root manifest.json out of sync with plugin/manifest.json (regene
 for v in t["entryPoints"].values(): assert os.path.isfile(os.path.join(r, "..", v)), v
 PY
 fi
+# start args: quick must give every queued test warmup 3 / duration 20; explicit values win; no quick = app defaults
+fake="$(mktemp -d)/OmaBench.sh"; printf '#!/bin/sh\n' > "$fake"; chmod +x "$fake"
+a="$(OMABENCH3D_DRYRUN=1 "$root/bin/omabench3d-ctl" start "$fake" T1,T2,T3 1920x1080 1 0 1 "" "" none auto 1 omarchy 1 standard)"
+for x in -tests=T1,T2,T3 -quick -warmup=3 -duration=20 -tier=standard; do [[ " $a " == *" $x "* ]] || { echo "quick args missing $x: $a"; exit 1; }; done
+a="$(OMABENCH3D_DRYRUN=1 "$root/bin/omabench3d-ctl" start "$fake" T1,T2,T3 1920x1080 1 0 1 5 30 none)"
+[[ " $a " == *" -warmup=5 "* && " $a " == *" -duration=30 "* ]] || { echo "explicit warmup/duration lost: $a"; exit 1; }
+a="$(OMABENCH3D_DRYRUN=1 "$root/bin/omabench3d-ctl" start "$fake" T1,T2,T3 1920x1080 1 0 0 "" "" none)"
+[[ " $a " != *" -quick "* && " $a " != *"-duration="* ]] || { echo "non-quick got quick args: $a"; exit 1; }
+rm -rf "$(dirname "$fake")"
 "$root/bin/omabench3d-ctl" install-app 'http://bad' >/dev/null 2>&1 && { echo "install-app accepted bad url"; exit 1; }
 if command -v omarchy >/dev/null 2>&1; then omarchy plugin validate "$root"; fi
 printf 'All portable plugin checks passed.\n'

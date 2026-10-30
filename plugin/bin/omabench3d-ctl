@@ -157,6 +157,9 @@ case "$cmd" in
     if [[ "$res" =~ ^[0-9]{3,5}x[0-9]{3,5}$ ]]; then args+=("-res=$res"); elif [[ "$res" != native ]]; then echo "bad res" >&2; exit 2; fi
     [[ "$fs" == 1 ]] && args+=(-fullscreen) || args+=(-windowed)
     [[ "$quick" == 1 ]] && args+=(-quick)
+    # Quick = 3 s warmup + 20 s per test for EVERY queued test (explicit, so older app builds agree).
+    [[ "$quick" == 1 && ! "$warm" =~ ^[0-9]{1,3}$ ]] && warm=3
+    [[ "$quick" == 1 && ! "$dur" =~ ^[0-9]{1,4}$ ]] && dur=20
     [[ "$warm" =~ ^[0-9]{1,3}$ ]] && args+=("-warmup=$warm")
     [[ "$dur" =~ ^[0-9]{1,4}$ ]] && args+=("-duration=$dur")
     case "$pixel" in auto) ;; 0|2|4|8) args+=("-pixel=$pixel") ;; *) echo "bad pixel" >&2; exit 2 ;; esac
@@ -192,7 +195,10 @@ case "$cmd" in
         [[ "$res" == native ]] && args+=("-res=$(jq -r --arg m "$mon" '.[] | select(.name == $m) | "\(.width)x\(.height)"' <<<"$mons" | head -1)")
       fi
     fi
+    # Dev/test: print the exact command line instead of launching.
+    if [[ "${OMABENCH3D_DRYRUN:-}" == 1 ]]; then printf '%s ' "$app" "${args[@]}"; echo; exit 0; fi
     mkdir -p "$rundir" "$results"
+    printf '%q ' "$app" "${args[@]}" > "$rundir/last-cmdline"; echo >> "$rundir/last-cmdline"
     # New session => own process group, detached from the shell.
     setsid bash -c 'echo $$ > "$0"; exec "$@"' "$pidfile" "$app" "${args[@]}" >"$logfile" 2>&1 </dev/null &
     disown

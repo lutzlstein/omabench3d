@@ -112,6 +112,7 @@ private:
 	int32 InitFrames = 0;
 	int32 Passes = 3, CurrentPass = 0;
 	double WarmupS = 10.0, DurationS = 60.0;
+	bool bQuick = false;
 	int32 ResX = 2560, ResY = 1440;
 	bool bFullscreen = false;
 	FString Tier = TEXT("standard"); bool bSlowHint = false, bProfileGpu = false; double SlowAccum = 0; int32 ProfiledTest = -1; float RenderPct = 100;

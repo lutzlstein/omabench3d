@@ -104,7 +104,9 @@ void ABenchGameMode::ParseArgs()
 {
 	const TCHAR* Cmd = FCommandLine::Get();
 	FParse::Value(Cmd, TEXT("-passes="), Passes);
-	if (FParse::Param(Cmd, TEXT("quick"))) Passes = 1;
+	// -quick: 1 pass, 3 s warmup, 20 s per test, for every queued test (explicit -warmup/-duration still win).
+	bQuick = FParse::Param(Cmd, TEXT("quick"));
+	if (bQuick) { Passes = 1; WarmupS = 3.0; DurationS = 20.0; }
 	Passes = FMath::Clamp(Passes, 1, 10);
 	FParse::Value(Cmd, TEXT("-warmup="), WarmupS);
 	FParse::Value(Cmd, TEXT("-duration="), DurationS);
@@ -721,7 +723,7 @@ void ABenchGameMode::FillCommon(const TSharedRef<FJsonObject>& Root) const
 	Root->SetObjectField(TEXT("env"), Env);
 	TSharedRef<FJsonObject> Set = MakeShared<FJsonObject>();
 	Set->SetStringField(TEXT("res"), FString::Printf(TEXT("%dx%d"), ResX, ResY)); Set->SetNumberField(TEXT("passes"), Passes);
-	Set->SetStringField(TEXT("preset"), Passes == 1 ? TEXT("quick") : TEXT("standard")); Set->SetBoolField(TEXT("fullscreen"), bFullscreen);
+	Set->SetStringField(TEXT("preset"), bQuick ? TEXT("quick") : TEXT("standard")); Set->SetBoolField(TEXT("fullscreen"), bFullscreen);
 	Set->SetStringField(TEXT("tier"), Tier); Set->SetStringField(TEXT("renderRes"), FString::Printf(TEXT("%dx%d"), Cfg().W, Cfg().H));
 	Set->SetNumberField(TEXT("screenPercentage"), FMath::RoundToDouble(RenderPct * 10) / 10); Root->SetBoolField(TEXT("slowHint"), bSlowHint);
 	Set->SetNumberField(TEXT("warmupS"), WarmupS); Set->SetStringField(TEXT("theme"), ThemeName); Set->SetBoolField(TEXT("postFx"), !bNoPostFx); Set->SetNumberField(TEXT("pixel"), bNoPostFx ? 0 : PixelSize); Set->SetBoolField(TEXT("hud"), !bNoHud); Set->SetBoolField(TEXT("sysmon"), !bNoSysmon); Set->SetNumberField(TEXT("durationS"), DurationS);
