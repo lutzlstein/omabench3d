@@ -87,10 +87,22 @@ Panel {
   }
   function persist() { Quickshell.execDetached([root.ctl, "settings-save", JSON.stringify(ownSettings())]) }
   // The shell assigns `settings` after creation; wait until it has settled, then sync once.
+  property Process settingsLoadProc: Process {
+    command: [root.ctl, "settings-load"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        let stored = {}
+        try { stored = JSON.parse(String(text).slice(0, 8192)) || {} } catch (e) { stored = {} }
+        if (Object.keys(root.ownSettings()).length > 0) root.persist()          // explicit shell settings: keep, mirror
+        else if (Object.keys(stored).length > 0) root.save(stored)              // fresh entry: restore our copy
+      }
+    }
+  }
   property bool settingsSynced: false
   onSettingsChanged: if (!settingsSynced) settingsSyncTimer.restart()
   Component.onCompleted: settingsSyncTimer.restart()
-  Timer { id: settingsSyncTimer; interval: 1500; onTriggered: { root.settingsSynced = true; settingsLoadProc.running = true } }
+  // Held in properties (not children): Panel's default property is the lazily created popup content.
+  property Timer settingsSyncTimer: Timer { interval: 1500; onTriggered: { root.settingsSynced = true; root.settingsLoadProc.running = true } }
   function cycle(list, cur, dir) {
     let i = list.indexOf(cur); if (i < 0) i = 0
     return list[(i + dir + list.length) % list.length]
@@ -447,18 +459,6 @@ Panel {
     onTriggered: root.refresh()
   }
 
-  Process {
-    id: settingsLoadProc
-    command: [root.ctl, "settings-load"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        let stored = {}
-        try { stored = JSON.parse(String(text).slice(0, 8192)) || {} } catch (e) { stored = {} }
-        if (Object.keys(root.ownSettings()).length > 0) root.persist()          // explicit shell settings: keep, mirror
-        else if (Object.keys(stored).length > 0) root.save(stored)              // fresh entry: restore our copy
-      }
-    }
-  }
   Process {
     id: statusProc
     command: [root.ctl, "status", root.appPath]
