@@ -21,10 +21,10 @@ omarchy plugin add https://github.com/lutzlstein/omabench3d --enable   # clones 
 omarchy-shell shell rescanPlugins                                      # only if the icon does not appear
 ```
 
-Then click the barbell icon → **INSTALL APP**: the plugin downloads `omabench3d-linux-x86_64.tar.zst` from the latest
-GitHub Release, checks its `.sha256`, and unpacks it into `~/.local/share/omabench3d/app` (~415 MB download, ~730 MB unpacked). CLI equivalent:
+Then click the barbell icon → **INSTALL APP**: the plugin downloads `omabench3d-linux-x86_64.tar.zst` from the
+GitHub Release pinned in the plugin (`v0.4.0`), verifies it against the SHA256 hardcoded in `omabench3d-ctl` (fails closed on mismatch), and unpacks it into `~/.local/share/omabench3d/app` (~415 MB download, ~730 MB unpacked). CLI equivalent:
 `~/.config/omarchy/plugins/io.github.lutzlstein.omabench3d/plugin/bin/omabench3d-ctl install-app`
-(`OMABENCH3D_RELEASE_URL=file:///path/to/omabench3d-linux-x86_64.tar.zst` installs a local tarball).
+(`OMABENCH3D_RELEASE_URL=file:///path/to/omabench3d-linux-x86_64.tar.zst` installs a local tarball; it must still match the pinned digest).
 `appPath` defaults to `auto` (installed app, else a local `Packaged/` dev build).
 
 New installs land in the centre of the bar (`defaultSection`). Panel settings are mirrored to `~/.local/share/omabench3d/settings.json`

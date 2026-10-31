@@ -7,7 +7,7 @@
 #   omabench3d-ctl summary     -> last result + newest 8 history entries (JSON)
 #   omabench3d-ctl monitors    -> Hyprland outputs with refresh rates (JSON)
 #   omabench3d-ctl stop
-#   omabench3d-ctl install-app [url]  -> download+verify release into ~/.local/share/omabench3d/app
+#   omabench3d-ctl install-app [url]  -> download pinned release, verify against hardcoded sha256, unpack into ~/.local/share/omabench3d/app
 #   omabench3d-ctl settings-save <json> / settings-load  -> the plugin's own settings copy (survives remove/re-add)
 set -uo pipefail
 
@@ -25,7 +25,11 @@ settings_filter='with_entries(select(
   (.key|IN("appPath","tests","resolution","monitor","pixel","theme","tier")) and (.value|type)=="string" and (.value|length)<=256
   or (.key|IN("fullscreen","quick","hud","sysmon")) and (.value|type)=="boolean"
   or .key=="passes" and (.value|type)=="number" and .value>=1 and .value<=5))'
-release_url="${OMABENCH3D_RELEASE_URL:-https://github.com/lutzlstein/omabench3d/releases/latest/download/omabench3d-linux-x86_64.tar.zst}"
+# Pinned, reviewed release asset + its expected digest (hardcoded; never fetched from the release).
+# Bump both together in a plugin commit when shipping a new app release.
+release_tag="v0.4.0"
+release_sha256="f296c0b48895122795f6f59e688476fc45aa8ee5c9569ec7f91b88a60d76bcd2"
+release_url="${OMABENCH3D_RELEASE_URL:-https://github.com/lutzlstein/omabench3d/releases/download/$release_tag/omabench3d-linux-x86_64.tar.zst}"
 
 # "auto" (default): the app installed by install-app, else a local dev build.
 expand() {
@@ -38,7 +42,7 @@ expand() {
   [[ "$p" == "~/"* ]] && p="$HOME/${p#\~/}"; printf '%s' "$p"
 }
 
-# Download the release tarball + .sha256, verify, unpack into $appdir (atomic swap). Progress -> install.json.
+# Download the pinned tarball, verify against $release_sha256 (fail closed; any url must match it), unpack into $appdir (atomic swap). Progress -> install.json.
 install_app() {
   local url="${1:-$release_url}" tmp st
   [[ "$url" =~ ^(https://|file://)[A-Za-z0-9._~:/@%+-]+\.tar\.zst$ ]] || { echo "bad url" >&2; return 2; }
@@ -60,11 +64,11 @@ install_app() {
     sleep 1
   done
   wait "$cpid" || ok=0
-  if (( ! ok )) || ! curl -fsL --retry 2 -o "$tmp/app.tar.zst.sha256" "$url.sha256"; then
+  if (( ! ok )); then
     rm -rf "$tmp"; put failed "download failed"; echo "download failed" >&2; return 1
   fi
   put verifying "checking sha256"
-  if [[ "$(awk '{print $1}' "$tmp/app.tar.zst.sha256")" != "$(sha256sum "$tmp/app.tar.zst" | awk '{print $1}')" ]]; then
+  if [[ "$release_sha256" != "$(sha256sum "$tmp/app.tar.zst" | awk '{print $1}')" ]]; then
     rm -rf "$tmp"; put failed "checksum mismatch"; echo "checksum mismatch" >&2; return 1
   fi
   put unpacking "extracting"
